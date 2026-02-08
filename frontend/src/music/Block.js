@@ -5,7 +5,7 @@ class Block {
     }
 
     display() {
-        this.chord.build();
+        return this.chord.build();
     }
 }
 
