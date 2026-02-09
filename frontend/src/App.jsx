@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import StartPage from './pages/StartPage';
 import DAWPage from './pages/DAWPage';
 import './App.css';
 
@@ -13,7 +14,8 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<DAWPage />} />
+        <Route path="/" element={<StartPage />} />
+        <Route path="/DAWpage" element={<DAWPage />} />
       </Routes>
     </BrowserRouter>
   );
