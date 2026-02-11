@@ -17,6 +17,7 @@ function App() {
       <Routes>
         <Route path="/" element={<StartPage />} />
         <Route path="/DAWpage" element={<DAWPage />} />
+        <Route path="/Tutorialpage" element={<TutorialPage />} />
       </Routes>
     </BrowserRouter>
   );
