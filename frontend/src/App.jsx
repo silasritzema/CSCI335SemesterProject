@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import StartPage from './pages/StartPage';
 import DAWPage from './pages/DAWPage';
+import TutorialPage from './pages/TutorialPage'
 import './App.css';
 
 function App() {
