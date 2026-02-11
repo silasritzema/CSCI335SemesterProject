@@ -3,7 +3,7 @@ import TutorialPage from './TutorialPage';
 import {useState } from 'react';
 
 // Christian Rast
-// this page is a placeholder for a text to speech button that will be added to the start page
+// this page is a placeholder for a text to speech button that will be added to the start page as a popup
 
 
 function TextToSpeechPage() {

@@ -2,9 +2,9 @@ import { useNavigate } from 'react-router-dom';
 import DAWPage from './DAWPage';
 
 // Benjamin Lee
-// This page is currently just a placeholder, but it will eventually be the home page for the app. 
-// Right now, it only has a basic tutorial, but later it will include an text
-// or text-to-speech option.
+// This page is currently just a placeholder for the tutorial module of the app.
+// Right now, it only has a basic tutorial with very simple instructions, but
+// it will eventually be fleshed out to include more.
 
 
 function TutorialPage() {
