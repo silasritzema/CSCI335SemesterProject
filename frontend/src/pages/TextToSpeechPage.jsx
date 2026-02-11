@@ -30,7 +30,7 @@ function TextToSpeechPage() {
                     onChange={(e) => setIsEnabled(e.target.checked)}
                 />
             </div>
-            <button className="btn btn-primary" onClick={changePage} disabled={!isEnabled}>Go To Tutorial</button>
+            <button className="btn btn-primary" onClick={changePage} disabled={false}>Go To Tutorial</button>
         </div>
     );
 
