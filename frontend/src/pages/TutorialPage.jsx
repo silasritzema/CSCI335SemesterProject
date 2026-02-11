@@ -1,5 +1,4 @@
 import { useNavigate } from 'react-router-dom';
-import StartPage from './StartPage';
 import DAWPage from './DAWPage';
 
 // Benjamin Lee
@@ -12,7 +11,7 @@ function TutorialPage() {
     const navigate = useNavigate();
 
     function changePage() {
-        navigate('/TutorialPage');
+        navigate('/DAWpage');
     }
 
     return ( // Build page and return it
@@ -21,7 +20,9 @@ function TutorialPage() {
             
             {/* Controls */}
             <div className="flex gap-2 mb-6">
-                <h1 className="text-xl font-semibold">Step 1 Press the button below to get started.</h1>
+                <h1 className="text-xl font-semibold">Step 1. Select the chord you want to choose.</h1>
+                <h2 className2="text-xl font-semibold">Step 2. Select the number of fingers.</h2>
+                <h3 className="text-xl font-semibold">Step 3. Click the add button.</h3>
             </div>
             <button tutorial="btn btn-primary" onClick={changePage} disabled={false}>Tutorial</button>
         </div>
