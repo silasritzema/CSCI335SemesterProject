@@ -22,7 +22,7 @@ function StartPage() {
             <div className="flex gap-2 mb-6">
                 <h1 className="text-xl font-semibold">Welcome to the Chord Builder! Press the button below to get started.</h1>
             </div>
-            <button className="btn btn-primary" onClick={changePage} disabled={false}>Go To Chord Builder</button>
+            <button className="btn btn-primary" onClick={changePage} disabled={false}>Start</button>
         </div>
         
     );
