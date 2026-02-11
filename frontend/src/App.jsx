@@ -1,7 +1,8 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import StartPage from './pages/StartPage';
 import DAWPage from './pages/DAWPage';
-import TutorialPage from './pages/TutorialPage'
+import TutorialPage from './pages/TutorialPage';
+import TextToSpeechPage from './pages/TextToSpeechPage';
 import './App.css';
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
         <Route path="/" element={<StartPage />} />
         <Route path="/DAWpage" element={<DAWPage />} />
         <Route path="/Tutorialpage" element={<TutorialPage />} />
+        <Route path="/TextToSpeechPage" element={<TextToSpeechPage />} />
       </Routes>
     </BrowserRouter>
   );
