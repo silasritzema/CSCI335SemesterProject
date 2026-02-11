@@ -8,6 +8,12 @@ import {useState } from 'react';
 
 function TextToSpeechPage() {
     const navigate = useNavigate();
+
+    function changePage() {
+        navigate('/TutorialPage');
+    }
+
+    
     const [isEnabled, setIsEnabled] = useState(false);
 
       return (
@@ -24,25 +30,11 @@ function TextToSpeechPage() {
                     onChange={(e) => setIsEnabled(e.target.checked)}
                 />
             </div>
+            <button className="btn btn-primary" onClick={changePage} disabled={!isEnabled}>Go To Tutorial</button>
         </div>
     );
 
-    function changePage() {
-        navigate('/TextToSpeechPage');
-    }
 
-    return ( // Build page and return it
-        <div className="min-h-screen bg-base-300 p-6">
-            <h1 className="text-2xl font-bold mb-4">Text to Speech Page</h1>
-            
-            {/* Controls */}
-            <div className="flex gap-2 mb-6">
-                <h1 className="text-xl font-semibold">Enable text to speech?    </h1>
-            </div>
-            <button className="btn btn-primary" onClick={changePage} disabled={false}>Enable</button>
-        </div>
-        
-    );
 }
 
 export default TextToSpeechPage;

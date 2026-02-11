@@ -11,7 +11,7 @@ function StartPage() {
     const navigate = useNavigate();
 
     function changePage() {
-        navigate('/Tutorialpage');
+        navigate('/TextToSpeechPage');
     }
 
     return ( // Build page and return it
