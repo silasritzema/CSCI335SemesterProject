@@ -29,7 +29,7 @@ function TutorialPage() {
                 <h3 className3="text-xl font-semibold">Step 3. Click the add button.</h3>
             </div>
 
-            <button className="btn btn-primary" onClick={changePage} disabled={false}>Go to Chord Builder</button>
+            <button tutorial="btn btn-primary" onClick={changePage} disabled={false}>Go to Chord Builder</button>
         </div>
         
     );
