@@ -19,12 +19,15 @@ function TutorialPage() {
             <h1 className="text-2xl font-bold mb-4">Tutorial</h1>
             
             {/* Controls */}
-            <div className="flex gap-2 mb-6">
+            <div className="flex gap-2 mb-6"></div>
                 <h1 className="text-xl font-semibold">Step 1. Select the chord you want to choose.</h1>
+            <div className3="flex gap-2 mb-6">
                 <h2 className2="text-xl font-semibold">Step 2. Select the number of fingers.</h2>
-                <h3 className="text-xl font-semibold">Step 3. Click the add button.</h3>
+            <div className2="flex gap-2 mb-6"></div>
+                <h3 className3="text-xl font-semibold">Step 3. Click the add button.</h3>
             </div>
-            <button tutorial="btn btn-primary" onClick={changePage} disabled={false}>Tutorial</button>
+
+            <button tutorial="btn btn-primary" onClick={changePage} disabled={false}>Go to Chord Builder</button>
         </div>
         
     );
