@@ -1,8 +1,8 @@
 import { useNavigate } from 'react-router-dom';
-import DAWPage from './DAWPage';
+import TutorialPage from './TutorialPage';
 
 // Silas Ritzema
-// This page is currently just a placeholder, but it will eventually be the home page for the app. 
+// This page is currently Wjust a placeholder, but it will eventually be the home page for the app. 
 // It will have some information about the app and a button to go to the text-to-speech prompt, but
 // until that page is built, it just has a button to go to the DAW page.
 
@@ -11,7 +11,7 @@ function StartPage() {
     const navigate = useNavigate();
 
     function changePage() {
-        navigate('/DAWpage');
+        navigate('/Tutorialpage');
     }
 
     return ( // Build page and return it
