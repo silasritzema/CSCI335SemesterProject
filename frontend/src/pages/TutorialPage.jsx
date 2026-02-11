@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import StartPage from './StartPage';
+import DAWPage from './DAWPage';
 
 // Benjamin Lee
 // This page is currently just a placeholder, but it will eventually be the home page for the app. 
@@ -11,7 +12,7 @@ function TutorialPage() {
     const navigate = useNavigate();
 
     function changePage() {
-        navigate('/StartPage');
+        navigate('/TutorialPage');
     }
 
     return ( // Build page and return it
