@@ -12,3 +12,28 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum LicenseTier {
+  FREE
+  PREMIUM
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  name         String?
+  passwordHash String
+  license      License?
+  ttsEnabled   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+}
+
+model License {
+  id          Int       @id @default(autoincrement())
+  // bcrypt hash of license string
+  licenseHash String    @unique
+  userId      Int       @unique
+  user        User      @relation(fields: [userId], references: [id])
+  expiresAt   DateTime?
+  revoked     Boolean   @default(false)
+}
