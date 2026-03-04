@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import bcrypt from 'brcrypt';
+import bcrypt from 'bcrypt';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -43,7 +43,7 @@ export const register = async (req, res) => {
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
-        const user = await prisma.user.create({ data: { name: name.trim(), email: email.toLowerCase(), password: hashedPassword } });
+        const user = await prisma.user.create({ data: { name: name.trim(), email: email.toLowerCase(), passwordHash: hashedPassword } });
 
         res.status(201).json({
             id: user.id,
@@ -67,8 +67,10 @@ export const login = async (req, res) => {
         }
 
         const user = await prisma.user.findUnique({ where: { email } });
-
-        const isMatch = await bcrypt.compare(password, user.password);
+        if (!user) {
+            return res.status(401).json({message: "Invalid email or password" })
+        }
+        const isMatch = await bcrypt.compare(password, user.passwordHash);
         if (!isMatch) return res.status(401).json({ message: 'Invalid email or password' });
 
         res.status(200).json({
