@@ -1,5 +1,5 @@
 class Block {
-    constructor(chord, gesture = null, instrument = 'keys') {
+    constructor(chord, gesture = null, instrument = 'piano') {
         this.chord = chord;
         this.gesture = gesture;
         this.instrument = instrument;
