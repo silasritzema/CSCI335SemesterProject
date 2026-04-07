@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { playChord } from '../audio/audioEngine';
 import { exportMidiMultiTrack, importMidiMultiTrack } from '../audio/midiExport';
 import ChordForm from '../components/ChordForm';
+import WebcamComponent from '../components/WebcamComponent';
 
 const INSTRUMENTS = ['piano', 'guitar', 'bass', 'drums'];
 const TRACK_COLORS = ['bg-success', 'bg-info', 'bg-secondary', 'bg-warning', 'bg-error', 'bg-accent'];
@@ -255,6 +256,10 @@ function StudioPage() {
                             })}
                         </div>
                     )}
+                </div>
+
+                <div className="w-96 shrink-0 bg-base-200 border-l border-base-content/10 overflow-y-auto p-4 flex flex-col gap-4">
+                    <WebcamComponent />
                 </div>
             </div>
 
