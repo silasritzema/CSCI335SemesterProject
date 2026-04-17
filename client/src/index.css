@@ -3,3 +3,60 @@
 @plugin "daisyui" {
   themes: night;
 }
+
+.particle-network-canvas {
+  opacity: 0.65;
+  mix-blend-mode: screen;
+}
+
+.disco-mode {
+  animation: discoHueRotate var(--disco-hue-duration, 1100ms) linear infinite;
+}
+
+.disco-flash-overlay {
+  mix-blend-mode: color-dodge;
+  opacity: 0.38;
+  animation: discoFlash var(--disco-flash-duration, 560ms) linear infinite;
+}
+
+@keyframes discoHueRotate {
+  0% {
+    filter: hue-rotate(0deg) saturate(1.1);
+  }
+  25% {
+    filter: hue-rotate(90deg) saturate(1.35);
+  }
+  50% {
+    filter: hue-rotate(180deg) saturate(1.45);
+  }
+  75% {
+    filter: hue-rotate(270deg) saturate(1.35);
+  }
+  100% {
+    filter: hue-rotate(360deg) saturate(1.1);
+  }
+}
+
+@keyframes discoFlash {
+  0% {
+    background: rgba(255, 20, 147, 0.3);
+  }
+  16% {
+    background: rgba(0, 255, 255, 0.28);
+  }
+  33% {
+    background: rgba(124, 252, 0, 0.28);
+  }
+  50% {
+    background: rgba(255, 255, 0, 0.3);
+  }
+  66% {
+    background: rgba(255, 69, 0, 0.3);
+  }
+  83% {
+    background: rgba(138, 43, 226, 0.3);
+  }
+  100% {
+    background: rgba(255, 20, 147, 0.3);
+  }
+}
