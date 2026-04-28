@@ -4,14 +4,30 @@ import { exportMidiMultiTrack, importMidiMultiTrack } from '../audio/midiExport'
 import ChordForm from '../components/ChordForm';
 import WebcamComponent from '../components/WebcamComponent';
 
+/**
+ * Instruments available for each track.
+ * The track grid uses these values for playback sound selection.
+ */
 const INSTRUMENTS = ['piano', 'guitar', 'bass', 'drums'];
+
+/**
+ * Track colors are used to visually distinguish each track in the step sequencer.
+ */
 const TRACK_COLORS = ['#6eb6ff', '#ffa94d', '#c77dff', '#9be15d', '#ff8787', '#66d9e8'];
 
+/**
+ * Return the length of a slot map as the number of used beat columns.
+ * Slots are stored as sparse objects keyed by numeric beat index.
+ */
 function getLen(slots) {
     const keys = Object.keys(slots).map(Number);
     return keys.length === 0 ? 0 : Math.max(...keys) + 1;
 }
 
+/**
+ * Convert seconds into a human-readable minutes:seconds string.
+ * Used for MP3 track playback display.
+ */
 function formatClock(sec) {
     if (!Number.isFinite(sec) || sec < 0) return '0:00';
     const whole = Math.floor(sec);
@@ -20,6 +36,11 @@ function formatClock(sec) {
     return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/**
+ * StudioPage is the main composition workspace for the app.
+ * It renders the track sidebar, step sequencer grid, playback controls,
+ * MIDI import/export, MP3 upload, and an interactive webcam panel.
+ */
 function StudioPage() {
     const [tracks, setTracks] = useState([
         { id: crypto.randomUUID(), name: 'Track 1', instrument: 'piano', muted: false, slots: {} }
@@ -186,6 +207,10 @@ function StudioPage() {
     const scrubMax = audioDuration > 0 ? audioDuration : 1;
     const discoDuration = 2650 - discoSpeed;
 
+    /**
+     * Sync the current sequencer step with MP3 playback time.
+     * This keeps the step indicator aligned when an audio track is playing.
+     */
     function syncStepWithAudioTime(currentSec, durationSec = audioDuration) {
         if (!hasBlocks || !Number.isFinite(currentSec) || !Number.isFinite(durationSec) || durationSec <= 0) {
             return;
@@ -195,6 +220,10 @@ function StudioPage() {
         setActiveStep(Math.max(step, 0));
     }
 
+    /**
+     * Stop all playback and optionally reset playback position.
+     * Handles both sequencer loop and MP3 audio element state.
+     */
     function stopPlayback(resetPosition = false) {
         clearInterval(playbackRef.current);
         playbackRef.current = null;
@@ -214,6 +243,10 @@ function StudioPage() {
         }
     }
 
+    /**
+     * Handle MP3 file selection and register it as the active audio track.
+     * Rejects non-MP3 files and manages object URL cleanup for previous uploads.
+     */
     function onMp3Upload(e) {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -237,6 +270,9 @@ function StudioPage() {
         e.target.value = '';
     }
 
+    /**
+     * Remove the currently uploaded MP3 track, reset audio state, and cancel playback.
+     */
     function removeMp3Track() {
         if (isPlaying) stopPlayback(true);
         if (audioTrack?.url) {
@@ -248,21 +284,30 @@ function StudioPage() {
         setAudioDuration(0);
     }
 
+    /**
+     * Add a new empty track to the sequencer with the next instrument and default naming.
+     */
     function addTrack() {
         let num = tracks.length + 1;
         let inst = INSTRUMENTS[tracks.length % INSTRUMENTS.length];
         setTracks([...tracks, { id: crypto.randomUUID(), name: `Track ${num}`, instrument: inst, muted: false, slots: {} }]);
     }
 
+    /**
+     * Remove a sequencer track by id and clear selection if it was active.
+     */
     function removeTrack(id) {
         setTracks(tracks.filter(t => t.id !== id));
         if (selectedTrack === id) setSelectedTrack(null);
     }
 
+    /**
+     * Update track metadata such as name, instrument, or muted state.
+     */
     function updateTrack(id, changes) {
         setTracks(tracks.map(t => t.id === id ? { ...t, ...changes } : t));
     }
-
+},{
     function addBlock(trackId, block) {
         setTracks(prev => prev.map(t => {
             if (t.id !== trackId) return t;
@@ -374,6 +419,10 @@ function StudioPage() {
         };
     }, [audioTrack]);
 
+    /**
+     * Wire audio element events for MP3 playback metadata, time updates, and completion.
+     * The sequencer syncs active steps while the audio track is playing.
+     */
     useEffect(() => {
         const el = audioRef.current;
         if (!el) return;
