@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { playChord } from '../audio/audioEngine';
 import { exportMidiMultiTrack, importMidiMultiTrack } from '../audio/midiExport';
 import ChordForm from '../components/ChordForm';
+import GestureChordPanel from '../components/GestureChordPanel';
 import WebcamComponent from '../components/WebcamComponent';
 
 /**
@@ -689,6 +690,10 @@ function StudioPage() {
                 </div>
 
                 <div className="flex w-96 shrink-0 flex-col gap-4 overflow-y-auto border-l border-[#3d3d3d] bg-[#1b1b1b] p-4">
+                    <GestureChordPanel
+                        onAdd={block => selectedTrack && addBlock(selectedTrack, block)}
+                        disabled={!selectedTrack}
+                    />
                     <WebcamComponent />
                 </div>
             </div>
