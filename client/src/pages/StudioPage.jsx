@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { playChord } from '../audio/audioEngine';
 import { exportMidiMultiTrack, importMidiMultiTrack } from '../audio/midiExport';
 import ChordForm from '../components/ChordForm';
@@ -366,6 +366,23 @@ function StudioPage() {
         playbackRef.current = setInterval(tick, 1000);
     }
 
+    const handleGestureAction = useCallback(
+        (action) => {
+            if (action === 'play') {
+                if (!isPlaying && hasPlayableContent) play();
+                return;
+            }
+            if (action === 'stop') {
+                if (isPlaying) stopPlayback();
+                return;
+            }
+            if (action === 'addTrack') {
+                addTrack();
+            }
+        },
+        [isPlaying, hasPlayableContent],
+    );
+
     useEffect(() => {
         return () => {
             if (audioTrack?.url) {
@@ -473,7 +490,7 @@ function StudioPage() {
                 <button
                     className={`btn btn-xs h-7 min-h-7 rounded border px-3 text-[10px] font-semibold uppercase tracking-[0.08em] ${
                         discoMode
-                            ? 'border-[#9f9f9f] bg-[#6a6a6a] text-[#fff]'
+                            ? 'border-[#9f9f9f] bg-[#6a6a6a] text-white'
                             : 'border-[#5b5b5b] bg-[#2a2a2a] text-[#cecece]'
                     }`}
                     onClick={() => setDiscoMode((v) => !v)}
@@ -640,7 +657,7 @@ function StudioPage() {
                 </div>
 
                 <div className="flex w-96 shrink-0 flex-col gap-4 overflow-y-auto border-l border-[#3d3d3d] bg-[#1b1b1b] p-4">
-                    <WebcamComponent />
+                    <WebcamComponent onGestureAction={handleGestureAction} />
                 </div>
             </div>
 

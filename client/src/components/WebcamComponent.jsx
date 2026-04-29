@@ -26,6 +26,29 @@ const MASK_PATHS = ['/masks/face-mask.png', '/masks/rapper.svg'];
 /** MediaPipe Face Mesh–compatible indices (person’s left / right eyes). */
 const LM_L_EYE_OUTER = 33;
 const LM_R_EYE_OUTER = 263;
+const HAND_LM = {
+  wrist: 0,
+  thumbCmc: 1,
+  thumbMcp: 2,
+  thumbIp: 3,
+  thumbTip: 4,
+  indexPip: 6,
+  indexTip: 8,
+  middlePip: 10,
+  middleTip: 12,
+  ringPip: 14,
+  ringTip: 16,
+  pinkyPip: 18,
+  pinkyTip: 20,
+};
+const HAND_CONNECTIONS = [
+  [0, 1], [1, 2], [2, 3], [3, 4],
+  [0, 5], [5, 6], [6, 7], [7, 8],
+  [5, 9], [9, 10], [10, 11], [11, 12],
+  [9, 13], [13, 14], [14, 15], [15, 16],
+  [13, 17], [17, 18], [18, 19], [19, 20],
+  [0, 17],
+];
 
 /**
  * Draws a 2D mask image aligned to eyes (mirrored preview coords).
@@ -65,7 +88,70 @@ function drawRapperMask(ctx, landmarks, vw, vh, img) {
   ctx.restore();
 }
 
-export default function WebcamComponent() {
+function drawHandOverlay(ctx, landmarks, vw, vh) {
+  const mx = (x) => (1 - x) * vw;
+  const my = (y) => y * vh;
+
+  ctx.save();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(190, 190, 190, 0.9)';
+  for (const [a, b] of HAND_CONNECTIONS) {
+    const p1 = landmarks[a];
+    const p2 = landmarks[b];
+    if (!p1 || !p2) continue;
+    ctx.beginPath();
+    ctx.moveTo(mx(p1.x), my(p1.y));
+    ctx.lineTo(mx(p2.x), my(p2.y));
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = 'rgba(230, 230, 230, 0.95)';
+  for (const p of landmarks) {
+    ctx.beginPath();
+    ctx.arc(mx(p.x), my(p.y), 3.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function classifyHandGesture(landmarks) {
+  const thumbReach =
+    Math.abs(landmarks[HAND_LM.thumbTip].x - landmarks[HAND_LM.thumbMcp].x) >
+    Math.abs(landmarks[HAND_LM.thumbIp].x - landmarks[HAND_LM.thumbMcp].x) + 0.02;
+  const indexUp = landmarks[HAND_LM.indexTip].y < landmarks[HAND_LM.indexPip].y - 0.02;
+  const middleUp = landmarks[HAND_LM.middleTip].y < landmarks[HAND_LM.middlePip].y - 0.02;
+  const ringUp = landmarks[HAND_LM.ringTip].y < landmarks[HAND_LM.ringPip].y - 0.02;
+  const pinkyUp = landmarks[HAND_LM.pinkyTip].y < landmarks[HAND_LM.pinkyPip].y - 0.02;
+  const wristY = landmarks[HAND_LM.wrist].y;
+  const thumbY = landmarks[HAND_LM.thumbTip].y;
+  const dx = landmarks[HAND_LM.thumbTip].x - landmarks[HAND_LM.indexTip].x;
+  const dy = landmarks[HAND_LM.thumbTip].y - landmarks[HAND_LM.indexTip].y;
+  const pinchDist = Math.hypot(dx, dy);
+  const palmScale = Math.max(
+    0.001,
+    Math.hypot(
+      landmarks[HAND_LM.wrist].x - landmarks[HAND_LM.middleTip].x,
+      landmarks[HAND_LM.wrist].y - landmarks[HAND_LM.middleTip].y,
+    ),
+  );
+  const isOk = pinchDist / palmScale < 0.24 && middleUp && ringUp && pinkyUp;
+
+  if (isOk) return 'OK Sign';
+  if (indexUp && middleUp && !ringUp && !pinkyUp) return 'Peace / Victory';
+  if (indexUp && !middleUp && !ringUp && !pinkyUp) return 'Point';
+  if (thumbReach && !indexUp && !middleUp && !ringUp && !pinkyUp) {
+    if (thumbY < wristY - 0.05) return 'Thumbs Up';
+    if (thumbY > wristY + 0.05) return 'Thumbs Down';
+    return 'Thumb';
+  }
+  if (thumbReach && indexUp && middleUp && ringUp && pinkyUp) return 'Open Hand';
+  if (!thumbReach && !indexUp && !middleUp && !ringUp && !pinkyUp) return 'Fist';
+  if (indexUp && middleUp && ringUp && !pinkyUp) return 'Three Fingers';
+  if (indexUp && middleUp && ringUp && pinkyUp) return 'Four Fingers';
+  return 'Hand Detected';
+}
+
+export default function WebcamComponent({ onGestureAction }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const landmarkerRef = useRef(null);
@@ -74,6 +160,9 @@ export default function WebcamComponent() {
   const streamRef = useRef(null);
   /** MediaPipe requires strictly increasing timestamps per stream. */
   const lastVideoFrameTsRef = useRef(0);
+  const stableGestureRef = useRef('');
+  const stableGestureCountRef = useRef(0);
+  const lastActionAtRef = useRef(0);
 
   const [isOn, setIsOn] = useState(false);
   const [error, setError] = useState(null);
@@ -82,6 +171,7 @@ export default function WebcamComponent() {
   const [faceMode, setFaceMode] = useState('none');
   const [landmarkerLoading, setLandmarkerLoading] = useState(false);
   const [landmarkerError, setLandmarkerError] = useState(null);
+  const [gestureLabel, setGestureLabel] = useState('');
 
   const startWebcam = async () => {
     try {
@@ -134,7 +224,7 @@ export default function WebcamComponent() {
   }, []);
 
   useEffect(() => {
-    if (!isOn || faceMode !== 'rapper') {
+    if (!isOn || faceMode === 'none') {
       if (landmarkerRef.current) {
         try {
           landmarkerRef.current.close();
@@ -146,6 +236,9 @@ export default function WebcamComponent() {
       queueMicrotask(() => {
         setLandmarkerLoading(false);
         setLandmarkerError(null);
+        setGestureLabel('');
+        stableGestureRef.current = '';
+        stableGestureCountRef.current = 0;
       });
       return;
     }
@@ -158,19 +251,29 @@ export default function WebcamComponent() {
 
     (async () => {
       try {
-        const { FaceLandmarker, FilesetResolver } = await import('@mediapipe/tasks-vision');
+        const { FaceLandmarker, HandLandmarker, FilesetResolver } = await import('@mediapipe/tasks-vision');
         const wasm = await FilesetResolver.forVisionTasks(
           `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_TASKS_VERSION}/wasm`,
         );
-        const modelUrl =
+        const faceModelUrl =
           'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+        const handModelUrl =
+          'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 
-        const tryCreate = async (delegate) =>
-          FaceLandmarker.createFromOptions(wasm, {
-            baseOptions: { modelAssetPath: modelUrl, delegate },
+        const tryCreate = async (delegate) => {
+          if (faceMode === 'rapper') {
+            return FaceLandmarker.createFromOptions(wasm, {
+              baseOptions: { modelAssetPath: faceModelUrl, delegate },
+              runningMode: 'VIDEO',
+              numFaces: 1,
+            });
+          }
+          return HandLandmarker.createFromOptions(wasm, {
+            baseOptions: { modelAssetPath: handModelUrl, delegate },
             runningMode: 'VIDEO',
-            numFaces: 1,
+            numHands: 1,
           });
+        };
 
         let lm;
         try {
@@ -186,7 +289,7 @@ export default function WebcamComponent() {
         landmarkerRef.current = lm;
       } catch (e) {
         if (!cancelled) {
-          setLandmarkerError(e?.message || 'Could not load face tracking');
+          setLandmarkerError(e?.message || 'Could not load tracking model');
         }
       } finally {
         if (!cancelled) setLandmarkerLoading(false);
@@ -209,7 +312,7 @@ export default function WebcamComponent() {
   const drawFrame = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas || !isOn || faceMode !== 'rapper') return;
+    if (!video || !canvas || !isOn || faceMode === 'none') return;
 
     if (video.readyState < 2) return;
 
@@ -234,7 +337,7 @@ export default function WebcamComponent() {
 
     const lm = landmarkerRef.current;
     const img = maskImgRef.current;
-    if (lm && img?.complete && img.naturalWidth > 0) {
+    if (faceMode === 'rapper' && lm && img?.complete && img.naturalWidth > 0) {
       try {
         let ts = performance.now();
         if (ts <= lastVideoFrameTsRef.current) {
@@ -246,16 +349,64 @@ export default function WebcamComponent() {
         if (landmarks) {
           drawRapperMask(ctx, landmarks, vw, vh, img);
         }
+        setGestureLabel('');
       } catch (e) {
         if (import.meta.env.DEV) {
           console.warn('[FaceLandmarker]', e);
         }
       }
     }
-  }, [isOn, faceMode, filterId]);
+
+    if (faceMode === 'hands' && lm) {
+      try {
+        let ts = performance.now();
+        if (ts <= lastVideoFrameTsRef.current) {
+          ts = lastVideoFrameTsRef.current + 0.001;
+        }
+        lastVideoFrameTsRef.current = ts;
+        const results = lm.detectForVideo(video, ts);
+        const landmarks = results.handLandmarks?.[0];
+        if (landmarks) {
+          drawHandOverlay(ctx, landmarks, vw, vh);
+          const gesture = classifyHandGesture(landmarks);
+          setGestureLabel(gesture);
+          if (gesture === stableGestureRef.current) {
+            stableGestureCountRef.current += 1;
+          } else {
+            stableGestureRef.current = gesture;
+            stableGestureCountRef.current = 1;
+          }
+
+          const now = performance.now();
+          const cooldownMs = 1400;
+          const stableFramesNeeded = 6;
+          if (stableGestureCountRef.current >= stableFramesNeeded && now - lastActionAtRef.current > cooldownMs) {
+            if (gesture === 'Thumbs Up') {
+              onGestureAction?.('play');
+              lastActionAtRef.current = now;
+            } else if (gesture === 'Fist') {
+              onGestureAction?.('stop');
+              lastActionAtRef.current = now;
+            } else if (gesture === 'Peace / Victory') {
+              onGestureAction?.('addTrack');
+              lastActionAtRef.current = now;
+            }
+          }
+        } else {
+          setGestureLabel('No hand detected');
+          stableGestureRef.current = '';
+          stableGestureCountRef.current = 0;
+        }
+      } catch (e) {
+        if (import.meta.env.DEV) {
+          console.warn('[HandLandmarker]', e);
+        }
+      }
+    }
+  }, [isOn, faceMode, filterId, onGestureAction]);
 
   useEffect(() => {
-    if (!isOn || faceMode !== 'rapper') {
+    if (!isOn || faceMode === 'none') {
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = 0;
@@ -323,7 +474,7 @@ export default function WebcamComponent() {
       </label>
 
       <label className="mb-2 flex flex-col gap-1">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#b1b1b1]">Face</span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#b1b1b1]">Mode</span>
         <select
           className="select select-sm h-8 min-h-8 w-full rounded border border-[#595959] bg-[#1f1f1f] text-xs text-[#e2e2e2] focus:outline-none focus:ring-2 focus:ring-[#7a7a7a]"
           value={faceMode}
@@ -332,6 +483,7 @@ export default function WebcamComponent() {
         >
           <option value="none">Normal</option>
           <option value="rapper">Rapper mask (tracks face)</option>
+          <option value="hands">Hand gestures (tracks hand)</option>
         </select>
       </label>
 
@@ -341,7 +493,13 @@ export default function WebcamComponent() {
         <span className="h-[2px] flex-1 rounded bg-[#7a7a7a]" />
       </div>
 
-      {faceMode === 'rapper' && landmarkerError && (
+      {faceMode === 'hands' && (
+        <div className="mb-2 rounded border border-[#4b4b4b] bg-[#151515] px-2 py-1 text-[10px] leading-snug text-[#c8c8c8]">
+          Thumbs Up = Play | Fist = Stop | Peace = Add Track
+        </div>
+      )}
+
+      {faceMode !== 'none' && landmarkerError && (
         <div className="alert border-none bg-[#5b4317]/90 py-2 text-[#ffe6b8]">
           <span className="text-xs">{landmarkerError}</span>
         </div>
@@ -360,7 +518,7 @@ export default function WebcamComponent() {
           playsInline
           muted
           className={
-            faceMode === 'rapper'
+            faceMode !== 'none'
               ? 'absolute inset-0 z-0 h-full w-full object-cover opacity-0 pointer-events-none'
               : `block w-full rounded bg-[#141414] ${isOn ? '' : 'opacity-30'}`
           }
@@ -374,7 +532,7 @@ export default function WebcamComponent() {
           }
         />
 
-        {faceMode === 'rapper' && (
+        {faceMode !== 'none' && (
           <>
             <canvas
               ref={canvasRef}
@@ -385,8 +543,13 @@ export default function WebcamComponent() {
             {isOn && landmarkerLoading && (
               <div className="absolute inset-0 z-20 flex items-center justify-center rounded bg-[#131313]/85 pointer-events-none">
                 <span className="rounded border border-[#5b5b5b] bg-[#242424] px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-[#d0d0d0]">
-                  Loading Face Tracking...
+                  Loading Tracking...
                 </span>
+              </div>
+            )}
+            {isOn && faceMode === 'hands' && !landmarkerLoading && (
+              <div className="absolute bottom-2 left-2 z-30 rounded border border-[#5b5b5b] bg-[#1d1d1d]/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#dfdfdf]">
+                {gestureLabel || 'No hand detected'}
               </div>
             )}
           </>
