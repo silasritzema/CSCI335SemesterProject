@@ -308,7 +308,7 @@ function StudioPage() {
     function updateTrack(id, changes) {
         setTracks(tracks.map(t => t.id === id ? { ...t, ...changes } : t));
     }
-},{
+
     function addBlock(trackId, block) {
         setTracks(prev => prev.map(t => {
             if (t.id !== trackId) return t;
