@@ -20,6 +20,7 @@ export default function GestureChordPanel({ onAdd, onConfirmedChord, disabled })
     const holdRef = useRef({ quality: null, root: null, since: 0, added: false });
     const progressBarRef = useRef(null);
     const onAddRef = useRef(onAdd);
+    const onConfirmedChordRef = useRef(onConfirmedChord);
 
     const frameCountRef = useRef(0);
 
@@ -37,6 +38,7 @@ export default function GestureChordPanel({ onAdd, onConfirmedChord, disabled })
     });
 
     useEffect(() => { onAddRef.current = onAdd; }, [onAdd]);
+    useEffect(() => { onConfirmedChordRef.current = onConfirmedChord; }, [onConfirmedChord]);
 
     // Assign stream to video after React mounts the video element (active → true re-render)
     useEffect(() => {
@@ -210,7 +212,7 @@ export default function GestureChordPanel({ onAdd, onConfirmedChord, disabled })
                     h.added = true;
                     const block = new Block(new Chord(root, 4, quality));
                     onAddRef.current?.(block);
-                    onConfirmedChord?.(block);
+                    onConfirmedChordRef.current?.(block);
                 }
             } else {
                 holdRef.current = { quality, root, since: now, added: false };
@@ -338,7 +340,7 @@ export default function GestureChordPanel({ onAdd, onConfirmedChord, disabled })
                         </div>
                         <div>
                             <span className="text-[#34d399]">Right hand:</span>
-                            {' '}1=C  2=D  3=E  4=F  5=G
+                            {' '}1=C  2=D  3=E  4=F  5=G  thumb+pinky=A  index+pinky=B
                         </div>
                     </div>
 

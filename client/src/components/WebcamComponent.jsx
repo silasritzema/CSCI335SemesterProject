@@ -305,7 +305,7 @@ export default function WebcamComponent() {
   }, []);
 
   return (
-    <div className="relative w-80 overflow-hidden rounded-lg border border-[#3f3f3f] bg-[#1a1a1a] p-3">
+    <div className="relative w-full overflow-hidden rounded-lg border border-[#3f3f3f] bg-[#1a1a1a] p-3">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[#727272]" />
       <div className="mb-2 flex items-center justify-between border-b border-[#4a4a4a] pb-2">
         <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-[#dddddd]">Webcam</h3>

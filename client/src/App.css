@@ -1,0 +1,11 @@
+.studio-collapsible summary::-webkit-details-marker {
+  display: none;
+}
+
+.studio-collapsible[open] .studio-collapsible__chevron {
+  transform: rotate(180deg);
+}
+
+.studio-collapsible__chevron {
+  transition: transform 160ms ease;
+}

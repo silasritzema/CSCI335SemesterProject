@@ -1,4 +1,4 @@
-import { getHandLandmarks, getHandedness } from './gestureMapping';
+import { getHandLandmarks } from './gestureMapping';
 
 export const HAND_CONNECTIONS = [
     [0, 1], [1, 2], [2, 3], [3, 4],
@@ -20,7 +20,6 @@ function drawJoint(ctx, x, y, radius, fillStyle) {
 
 export function drawHandSkeleton(ctx, results, vw, vh) {
     const landmarks = getHandLandmarks(results);
-    const handednesses = getHandedness(results);
 
     for (let i = 0; i < landmarks.length; i++) {
         const lm = landmarks[i];

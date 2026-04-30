@@ -11,7 +11,7 @@ export const TUTORIAL_SECTIONS = [
         title: 'Hand Gesture Mapping',
         items: [
             'Left hand controls chord quality: open palm (4 or more fingers) means major, fist or 1 finger means minor.',
-            'Right hand controls chord root: 1=C, 2=D, 3=E, 4=F, 5=G.',
+            'Right hand controls chord root: 1=C, 2=D, 3=E, 4=F, 5=G, thumb+pinky=A, and index+pinky=B.',
             'Watch the Gesture Chords debug panel to confirm handedness and finger counts while testing.',
         ],
     },

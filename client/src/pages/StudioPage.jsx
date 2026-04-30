@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { playChord } from '../audio/audioEngine';
 import { exportMidiMultiTrack, importMidiMultiTrack } from '../audio/midiExport';
-import { getChordAnnouncement, getTtsStatusLabel, isTtsSupported, speakText } from '../audio/tts';
+import { getChordAnnouncement, getTtsStatusLabel, getVoiceOptions, getVoiceTestPhrase, isTtsSupported, speakText } from '../audio/tts';
 import ChordForm from '../components/ChordForm';
 import GestureChordPanel from '../components/GestureChordPanel';
 import TutorialModal from '../components/TutorialModal';
 import WebcamComponent from '../components/WebcamComponent';
+import { getSelectedTrackSummary, getStudioActivitySummary, STUDIO_UTILITY_SECTIONS } from './studioLayout';
 
 /**
  * Instruments available for each track.
@@ -60,6 +61,8 @@ function StudioPage() {
     const [discoSpeed, setDiscoSpeed] = useState(1100);
     const [tutorialOpen, setTutorialOpen] = useState(false);
     const [ttsEnabled, setTtsEnabled] = useState(true);
+    const [availableVoices, setAvailableVoices] = useState([]);
+    const [selectedVoiceURI, setSelectedVoiceURI] = useState('');
     const playbackRef = useRef(null);
     const tracksRef = useRef(tracks);
     const fileInputRef = useRef(null);
@@ -71,6 +74,29 @@ function StudioPage() {
         tracksRef.current = tracks;
     }, [tracks]);
 
+    useEffect(() => {
+        if (!ttsSupported) return;
+
+        function syncVoices() {
+            const voices = globalThis.speechSynthesis?.getVoices?.() ?? [];
+            setAvailableVoices(voices);
+            setSelectedVoiceURI((current) => {
+                const currentOptions = getVoiceOptions(voices);
+                if (current && currentOptions.some((voice) => voice.value === current)) {
+                    return current;
+                }
+                return currentOptions[0]?.value || '';
+            });
+        }
+
+        syncVoices();
+        globalThis.speechSynthesis?.addEventListener?.('voiceschanged', syncVoices);
+
+        return () => {
+            globalThis.speechSynthesis?.removeEventListener?.('voiceschanged', syncVoices);
+        };
+    }, [ttsSupported]);
+
     const maxLen = Math.max(...tracks.map(t => getLen(t.slots)), 0);
     const gridCols = maxLen + 1;
     const hasBlocks = maxLen > 0;
@@ -78,6 +104,13 @@ function StudioPage() {
     const hasPlayableContent = hasBlocks || hasAudioTrack;
     const scrubMax = audioDuration > 0 ? audioDuration : 1;
     const discoDuration = 2650 - discoSpeed;
+    const selectedMidiTrack = tracks.find(t => t.id === selectedTrack);
+    const selectedTrackSummary = getSelectedTrackSummary(selectedMidiTrack ?? null);
+    const studioActivitySummary = getStudioActivitySummary({
+        trackCount: tracks.length,
+        hasAudioTrack,
+        isPlaying,
+    });
 
     /**
      * Sync the current sequencer step with MP3 playback time.
@@ -192,12 +225,12 @@ function StudioPage() {
     function announceConfirmedChord(block) {
         if (!ttsEnabled || !ttsSupported) return;
         const message = getChordAnnouncement(block);
-        speakText(message);
+        speakText(message, { voiceURI: selectedVoiceURI });
     }
 
     function testVoice() {
         if (!ttsEnabled || !ttsSupported) return;
-        speakText('Voice guidance ready');
+        speakText(getVoiceTestPhrase(selectedVoiceURI), { voiceURI: selectedVoiceURI });
     }
 
     function removeBlock(trackId, slot) {
@@ -375,8 +408,6 @@ function StudioPage() {
         e.target.value = '';
     }
 
-    const selectedMidiTrack = tracks.find(t => t.id === selectedTrack);
-
     return (
         <div
             className={`relative h-screen flex flex-col overflow-hidden bg-[#141414] text-[#d7d7d7] ${discoMode ? 'disco-mode' : ''}`}
@@ -386,113 +417,69 @@ function StudioPage() {
             }}
         >
             {discoMode && <div className="disco-flash-overlay pointer-events-none absolute inset-0 z-40" />}
-            <div className="flex items-center gap-2 border-b border-[#3d3d3d] bg-[#1d1d1d] px-4 py-2">
-                <h1 className="mr-4 text-sm font-bold uppercase tracking-[0.22em] text-[#e5e5e5]">Beats by Ben</h1>
-                <button
-                    className="btn btn-sm h-8 min-h-8 rounded border-0 px-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#111]"
-                    style={{
-                        backgroundImage:
-                            'linear-gradient(120deg, #ff4d6d 0%, #ff9e3d 22%, #f9f871 42%, #5be37a 60%, #57c7ff 78%, #c180ff 100%)',
-                    }}
-                    onClick={play} disabled={!hasPlayableContent}>
-                    {isPlaying ? 'Stop' : 'Play'}
-                </button>
-                <span className="ml-2 rounded border border-[#5e5e5e] bg-[#242424] px-2 py-1 font-mono text-[10px] text-[#bdbdbd]">
-                    120 BPM
-                </span>
-                <button
-                    className={`btn btn-xs h-7 min-h-7 rounded border px-3 text-[10px] font-semibold uppercase tracking-[0.08em] ${
-                        discoMode
-                            ? 'border-[#9f9f9f] bg-[#6a6a6a] text-[#fff]'
-                            : 'border-[#5b5b5b] bg-[#2a2a2a] text-[#cecece]'
-                    }`}
-                    onClick={() => setDiscoMode((v) => !v)}
-                >
-                    {discoMode ? 'Disco On' : 'Disco Off'}
-                </button>
-                <label className="ml-1 flex items-center gap-2 rounded border border-[#4e4e4e] bg-[#232323] px-2 py-1">
-                    <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[#aaaaaa]">Speed</span>
-                    <input
-                        type="range"
-                        min={450}
-                        max={2200}
-                        step={50}
-                        value={discoSpeed}
-                        onChange={(e) => setDiscoSpeed(Number(e.target.value))}
-                        className="range range-xs w-20 [--range-bg:#181818] [--range-fill:#909090] [--range-thumb:#d6d6d6]"
-                        aria-label="Disco mode speed"
-                    />
-                </label>
-                <div className="flex-1" />
-                <button
-                    className="btn btn-sm h-8 min-h-8 rounded border border-[#606060] bg-[#2a2a2a] px-3 text-[11px] font-medium uppercase tracking-[0.06em] text-[#cfcfcf] hover:bg-[#353535]"
-                    onClick={doExport}
-                    disabled={!hasBlocks}
-                >
-                    Export MIDI
-                </button>
-                <button
-                    className="btn btn-sm h-8 min-h-8 rounded border border-[#606060] bg-[#2a2a2a] px-3 text-[11px] font-medium uppercase tracking-[0.06em] text-[#cfcfcf] hover:bg-[#353535]"
-                    onClick={() => fileInputRef.current.click()}
-                >
-                    Import MIDI
-                </button>
-                <input ref={fileInputRef} type="file" accept=".mid,.midi" className="hidden" onChange={doImport} />
-                <button
-                    className="btn btn-sm h-8 min-h-8 rounded border border-[#606060] bg-[#2a2a2a] px-3 text-[11px] font-medium uppercase tracking-[0.06em] text-[#cfcfcf] hover:bg-[#353535]"
-                    onClick={() => mp3InputRef.current.click()}
-                >
-                    Upload MP3
-                </button>
-                <input ref={mp3InputRef} type="file" accept=".mp3,audio/mpeg" className="hidden" onChange={onMp3Upload} />
-                <button
-                    className="btn btn-sm h-8 min-h-8 rounded border border-[#5f5f5f] bg-[#4a4a4a] px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#e6e6e6]"
-                    onClick={addTrack}
-                >
-                    + Track
-                </button>
-                <button
-                    className={`btn btn-sm h-8 min-h-8 rounded border px-3 text-[11px] font-semibold uppercase tracking-[0.08em] ${
-                        ttsEnabled && ttsSupported
-                            ? 'border-[#7a7a7a] bg-[#3d3d3d] text-[#f0f0f0]'
-                            : 'border-[#5a5a5a] bg-[#262626] text-[#b6b6b6]'
-                    }`}
-                    onClick={() => setTtsEnabled((enabled) => !enabled)}
-                    disabled={!ttsSupported}
-                >
-                    {ttsEnabled ? 'TTS On' : 'TTS Off'}
-                </button>
-                <button
-                    className="btn btn-sm h-8 min-h-8 rounded border border-[#5f5f5f] bg-[#2b2b2b] px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#e6e6e6]"
-                    onClick={testVoice}
-                    disabled={!ttsEnabled || !ttsSupported}
-                >
-                    Test Voice
-                </button>
-                <span className="rounded border border-[#5a5a5a] bg-[#202020] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#c8c8c8]">
-                    {getTtsStatusLabel(ttsEnabled, ttsSupported)}
-                </span>
-                <button
-                    className="btn btn-sm h-8 min-h-8 rounded border border-[#5f5f5f] bg-[#2b2b2b] px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#e6e6e6]"
-                    onClick={() => setTutorialOpen(true)}
-                >
-                    Tutorial
-                </button>
+            <div className="border-b border-[#2f2f2f] bg-[#111111]/95 px-3 py-3">
+                <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#2f2f2f] bg-[#191919] px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-3">
+                            <h1 className="text-sm font-bold uppercase tracking-[0.24em] text-[#f2f2f2]">BEN</h1>
+                            <span className="rounded-full border border-[#3f3f3f] bg-[#222222] px-2 py-1 font-mono text-[10px] text-[#bdbdbd]">
+                                120 BPM
+                            </span>
+                        </div>
+                        <p className="mt-1 text-xs text-[#909090]">
+                            {studioActivitySummary}
+                        </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            className="btn btn-sm h-9 min-h-9 rounded-xl border-0 px-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#111]"
+                            style={{
+                                backgroundImage:
+                                    'linear-gradient(120deg, #ff4d6d 0%, #ff9e3d 22%, #f9f871 42%, #5be37a 60%, #57c7ff 78%, #c180ff 100%)',
+                            }}
+                            onClick={play}
+                            disabled={!hasPlayableContent}
+                        >
+                            {isPlaying ? 'Stop' : 'Play'}
+                        </button>
+                        <button
+                            className="btn btn-sm h-9 min-h-9 rounded-xl border border-[#5f5f5f] bg-[#3b3b3b] px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#ececec]"
+                            onClick={addTrack}
+                        >
+                            + Track
+                        </button>
+                        <button
+                            className="btn btn-sm h-9 min-h-9 rounded-xl border border-[#4f4f4f] bg-[#242424] px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#d5d5d5] hover:bg-[#303030]"
+                            onClick={() => setTutorialOpen(true)}
+                        >
+                            Tutorial
+                        </button>
+                    </div>
+                </div>
             </div>
 
-            <div className="relative z-10 flex flex-1 overflow-hidden">
-                <div className="w-52 shrink-0 overflow-y-auto border-r border-[#3d3d3d] bg-[#181818]">
-                    <div className="h-7 border-b border-[#474747] bg-[#272727]" />
+            <div className="relative z-10 flex flex-1 gap-3 overflow-hidden p-3">
+                <div className="flex w-56 shrink-0 flex-col overflow-hidden rounded-2xl border border-[#303030] bg-[#181818]">
+                    <div className="flex items-center justify-between border-b border-[#3d3d3d] bg-[#202020] px-3 py-2">
+                        <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8f8f8f]">Tracks</p>
+                            <p className="text-xs text-[#d1d1d1]">{tracks.length} lane{tracks.length === 1 ? '' : 's'}</p>
+                        </div>
+                        <span className="rounded-full border border-[#444] bg-[#262626] px-2 py-1 text-[10px] uppercase tracking-[0.08em] text-[#b0b0b0]">
+                            Arrange
+                        </span>
+                    </div>
                     {audioTrack && (
-                        <div className={`flex h-16 cursor-pointer flex-col justify-center border-b border-[#474747] px-3 py-1 ${
-                            selectedTrack === audioTrack.id ? 'bg-[#3a3a3a]' : 'hover:bg-[#343434]'
+                        <div className={`flex h-14 cursor-pointer flex-col justify-center border-b border-[#383838] px-3 py-1 ${
+                            selectedTrack === audioTrack.id ? 'bg-[#323232]' : 'hover:bg-[#252525]'
                         }`} onClick={() => setSelectedTrack(selectedTrack === audioTrack.id ? null : audioTrack.id)}>
                             <div className="flex items-center gap-2">
                                 <div className="h-2 w-2 rounded-full bg-[#a0a0a0]" />
                                 <span className="truncate text-sm font-semibold text-[#e4e4e4]">{audioTrack.name}</span>
                             </div>
-                            <div className="flex items-center gap-2 ml-4 mt-0.5">
-                                <span className="text-xs text-[#a2a2a2]">MP3 track</span>
+                            <div className="ml-4 mt-0.5 flex items-center gap-2">
+                                <span className="text-[11px] text-[#8c8c8c]">MP3 track</span>
                                 <button className="btn btn-ghost btn-xs text-[#7b7b7b] hover:text-[#ef5f5f]"
                                     onClick={e => { e.stopPropagation(); removeMp3Track(); }}>
                                     ✕
@@ -502,20 +489,23 @@ function StudioPage() {
                     )}
                     {tracks.map((track, idx) => (
                         <div key={track.id}
-                            className={`flex h-16 cursor-pointer flex-col justify-center border-b border-[#474747] px-3 py-1 ${
-                                selectedTrack === track.id ? 'bg-[#3a3a3a]' : 'hover:bg-[#343434]'}`}
+                            className={`flex h-14 cursor-pointer flex-col justify-center border-b border-[#383838] px-3 py-1 ${
+                                selectedTrack === track.id ? 'bg-[#323232]' : 'hover:bg-[#252525]'}`}
                             onClick={() => setSelectedTrack(selectedTrack === track.id ? null : track.id)}>
                             <div className="flex items-center gap-2">
                                 <div
                                     className={`h-2 w-2 rounded-full ${track.muted ? 'opacity-30' : ''}`}
                                     style={{ backgroundColor: TRACK_COLORS[idx % TRACK_COLORS.length] }}
                                 />
-                                <input className="w-full bg-transparent text-sm font-semibold text-[#e2e2e2] outline-none"
+                                <input
+                                    className="max-w-[9rem] bg-transparent text-sm font-semibold text-[#e2e2e2] outline-none"
+                                    style={{ width: `${Math.max(track.name.length + 1, 7)}ch` }}
                                     value={track.name}
                                     onChange={e => updateTrack(track.id, { name: e.target.value })}
-                                    onClick={e => e.stopPropagation()} />
+                                    onClick={e => e.stopPropagation()}
+                                />
                             </div>
-                            <div className="flex items-center gap-1 ml-4 mt-0.5">
+                            <div className="ml-4 mt-0.5 flex items-center gap-1">
                                 <select
                                     className="select select-xs h-6 min-h-6 rounded border border-[#595959] bg-[#202020] p-0 px-1 text-[10px] uppercase tracking-[0.06em] text-[#b4b4b4]"
                                     value={track.instrument}
@@ -540,11 +530,11 @@ function StudioPage() {
                     ))}
                 </div>
 
-                <div className="flex-1 overflow-auto">
+                <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#303030] bg-[#1a1a1a]">
                     {/* beat numbers */}
-                    <div className="sticky top-0 z-10 flex h-7 border-b border-[#3f3f3f] bg-[#202020]">
+                    <div className="sticky top-0 z-10 flex h-8 border-b border-[#353535] bg-[#202020]">
                         {Array.from({ length: gridCols }).map((_, i) =>
-                            <div key={i} className={`relative flex w-24 shrink-0 items-center border-r border-[#3f3f3f] px-2 font-mono text-xs ${
+                            <div key={i} className={`relative flex w-20 shrink-0 items-center border-r border-[#353535] px-2 font-mono text-[11px] ${
                                 activeStep === i && isPlaying
                                     ? 'font-bold text-[#f2f2f2] bg-[#d8d8d80d]'
                                     : 'text-[#9b9b9b]'
@@ -560,9 +550,10 @@ function StudioPage() {
                         )}
                     </div>
 
+                    <div className="flex-1 overflow-auto">
                     {tracks.map((track, tIdx) =>
-                        <div key={track.id} className={`flex h-16 border-b border-[#3f3f3f] ${
-                            selectedTrack === track.id ? 'bg-[#2f2f2f]' : 'bg-[#242424]'
+                        <div key={track.id} className={`flex h-14 border-b border-[#353535] ${
+                            selectedTrack === track.id ? 'bg-[#282828]' : 'bg-[#202020]'
                         }`}>
                             {Array.from({ length: gridCols }).map((_, col) => {
                                 let block = track.slots[col];
@@ -572,7 +563,7 @@ function StudioPage() {
                                 let isDragged = dragSrc?.trackId === track.id && dragSrc?.slot === col;
 
                                 return <div key={col}
-                                    className={`relative h-full w-24 shrink-0 border-r border-[#343434] p-1 ${
+                                    className={`relative h-full w-20 shrink-0 border-r border-[#343434] p-1 ${
                                         active && isPlaying ? 'bg-[#f3f3f312]' : ''
                                     } ${hovering && dragSrc ? 'bg-[#7d7d7d2d]' : ''}`}
                                     onDragOver={e => { e.preventDefault(); setDropTarget({ trackId: track.id, slot: col }); }}
@@ -597,10 +588,10 @@ function StudioPage() {
                                             backgroundColor: color,
                                         }}
                                     >
-                                        <span className="text-sm font-bold leading-tight text-[#111]">
+                                        <span className="text-xs font-bold leading-tight text-[#111]">
                                             {block.chord.rootNote}{block.chord.quality === 'minor' ? 'm' : ''}
                                         </span>
-                                        <span className="text-xs leading-tight text-[#111111cc]">Oct {block.chord.octave}</span>
+                                        <span className="text-[10px] leading-tight text-[#111111cc]">Oct {block.chord.octave}</span>
                                         <button
                                             className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#11111155] text-[11px] font-bold text-[#111] opacity-0 transition-opacity group-hover:opacity-100 hover:bg-[#11111177] focus:opacity-100"
                                             onClick={() => removeBlock(track.id, col)}
@@ -612,44 +603,207 @@ function StudioPage() {
                             })}
                         </div>
                     )}
+                    </div>
                 </div>
 
-                <div className="flex w-96 shrink-0 flex-col gap-4 overflow-y-auto border-l border-[#3d3d3d] bg-[#1b1b1b] p-4">
-                    <GestureChordPanel
-                        onAdd={block => selectedTrack && addBlock(selectedTrack, block)}
-                        onConfirmedChord={announceConfirmedChord}
-                        disabled={!selectedTrack}
-                    />
-                    <WebcamComponent />
+                <div className="flex w-[22rem] shrink-0 flex-col gap-3 overflow-y-auto rounded-2xl border border-[#303030] bg-[#171717] p-3">
+                    <div className={`rounded-2xl border px-3 py-3 ${
+                        selectedTrackSummary.ready
+                            ? 'border-[#3f4f3d] bg-[#1d241d]'
+                            : 'border-[#353535] bg-[#202020]'
+                    }`}>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8f8f8f]">Input Target</p>
+                        <p className="mt-1 text-sm font-semibold text-[#efefef]">{selectedTrackSummary.title}</p>
+                        <p className="mt-1 text-xs leading-5 text-[#a7a7a7]">{selectedTrackSummary.detail}</p>
+                    </div>
+
+                    {STUDIO_UTILITY_SECTIONS.map((section) => (
+                        <details
+                            key={section.id}
+                            className="studio-collapsible rounded-2xl border border-[#303030] bg-[#1d1d1d]"
+                            open={section.defaultOpen}
+                        >
+                            <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-3">
+                                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#d8d8d8]">
+                                    {section.title}
+                                </span>
+                                <span className="studio-collapsible__chevron text-[#7f7f7f]">⌄</span>
+                            </summary>
+                            <div className="border-t border-[#2d2d2d] px-3 py-3">
+                                {section.id === 'input' && (
+                                    <div className="space-y-3">
+                                        <GestureChordPanel
+                                            onAdd={block => selectedTrack && addBlock(selectedTrack, block)}
+                                            onConfirmedChord={announceConfirmedChord}
+                                            disabled={!selectedTrack}
+                                        />
+                                        <WebcamComponent />
+                                    </div>
+                                )}
+
+                                {section.id === 'media' && (
+                                    <div className="space-y-3">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button
+                                                className="btn btn-sm h-9 min-h-9 rounded-xl border border-[#4f4f4f] bg-[#242424] px-3 text-[11px] font-medium uppercase tracking-[0.06em] text-[#d4d4d4] hover:bg-[#2f2f2f]"
+                                                onClick={doExport}
+                                                disabled={!hasBlocks}
+                                            >
+                                                Export MIDI
+                                            </button>
+                                            <button
+                                                className="btn btn-sm h-9 min-h-9 rounded-xl border border-[#4f4f4f] bg-[#242424] px-3 text-[11px] font-medium uppercase tracking-[0.06em] text-[#d4d4d4] hover:bg-[#2f2f2f]"
+                                                onClick={() => fileInputRef.current.click()}
+                                            >
+                                                Import MIDI
+                                            </button>
+                                            <button
+                                                className="btn btn-sm col-span-2 h-9 min-h-9 rounded-xl border border-[#4f4f4f] bg-[#242424] px-3 text-[11px] font-medium uppercase tracking-[0.06em] text-[#d4d4d4] hover:bg-[#2f2f2f]"
+                                                onClick={() => mp3InputRef.current.click()}
+                                            >
+                                                Upload MP3
+                                            </button>
+                                        </div>
+                                        <input ref={fileInputRef} type="file" accept=".mid,.midi" className="hidden" onChange={doImport} />
+                                        <input ref={mp3InputRef} type="file" accept=".mp3,audio/mpeg" className="hidden" onChange={onMp3Upload} />
+
+                                        {audioTrack ? (
+                                            <div className="rounded-xl border border-[#3a3a3a] bg-[#181818] p-3">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-sm font-semibold text-[#efefef]">{audioTrack.name}</p>
+                                                        <p className="text-xs text-[#9d9d9d]">
+                                                            {formatClock(audioCurrentTime)} / {formatClock(audioDuration)}
+                                                        </p>
+                                                    </div>
+                                                    <button
+                                                        className="btn btn-ghost btn-xs text-[#8b8b8b] hover:text-[#ef5f5f]"
+                                                        onClick={removeMp3Track}
+                                                    >
+                                                        Remove
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs leading-5 text-[#8d8d8d]">
+                                                Import or export MIDI here, and keep an MP3 reference track tucked away until you need it.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+
+                                {section.id === 'voice' && (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between gap-2 rounded-xl border border-[#353535] bg-[#181818] px-3 py-2">
+                                            <span className="text-xs font-semibold text-[#d6d6d6]">{getTtsStatusLabel(ttsEnabled, ttsSupported)}</span>
+                                            <button
+                                                className={`btn btn-sm h-8 min-h-8 rounded-xl border px-3 text-[11px] font-semibold uppercase tracking-[0.08em] ${
+                                                    ttsEnabled && ttsSupported
+                                                        ? 'border-[#6d6d6d] bg-[#343434] text-[#f0f0f0]'
+                                                        : 'border-[#4d4d4d] bg-[#232323] text-[#b6b6b6]'
+                                                }`}
+                                                onClick={() => setTtsEnabled((enabled) => !enabled)}
+                                                disabled={!ttsSupported}
+                                            >
+                                                {ttsEnabled ? 'Disable' : 'Enable'}
+                                            </button>
+                                        </div>
+                                        <label className="flex flex-col gap-1">
+                                            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#a8a8a8]">Voice</span>
+                                            <select
+                                                className="select select-sm h-9 min-h-9 w-full rounded-xl border border-[#4d4d4d] bg-[#181818] text-xs text-[#dfdfdf]"
+                                                value={selectedVoiceURI}
+                                                onChange={(e) => setSelectedVoiceURI(e.target.value)}
+                                                disabled={!ttsSupported || availableVoices.length === 0}
+                                            >
+                                                {getVoiceOptions(availableVoices).map((voice) => (
+                                                    <option key={voice.value} value={voice.value}>
+                                                        {voice.label}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </label>
+                                        <button
+                                            className="btn btn-sm h-9 min-h-9 rounded-xl border border-[#4f4f4f] bg-[#242424] px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#d5d5d5]"
+                                            onClick={testVoice}
+                                            disabled={!ttsEnabled || !ttsSupported}
+                                        >
+                                            Test Voice
+                                        </button>
+                                    </div>
+                                )}
+
+                                {section.id === 'fx' && (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between gap-2 rounded-xl border border-[#353535] bg-[#181818] px-3 py-2">
+                                            <div>
+                                                <p className="text-xs font-semibold text-[#dedede]">Disco Mode</p>
+                                                <p className="text-[11px] text-[#8b8b8b]">Purely visual. Keeps the sequencer focused when off.</p>
+                                            </div>
+                                            <button
+                                                className={`btn btn-sm h-8 min-h-8 rounded-xl border px-3 text-[11px] font-semibold uppercase tracking-[0.08em] ${
+                                                    discoMode
+                                                        ? 'border-[#8c8c8c] bg-[#5e5e5e] text-[#fff]'
+                                                        : 'border-[#4d4d4d] bg-[#232323] text-[#bfbfbf]'
+                                                }`}
+                                                onClick={() => setDiscoMode((v) => !v)}
+                                            >
+                                                {discoMode ? 'On' : 'Off'}
+                                            </button>
+                                        </div>
+                                        <label className="flex flex-col gap-2 rounded-xl border border-[#353535] bg-[#181818] px-3 py-3">
+                                            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#a8a8a8]">Animation Speed</span>
+                                            <input
+                                                type="range"
+                                                min={450}
+                                                max={2200}
+                                                step={50}
+                                                value={discoSpeed}
+                                                onChange={(e) => setDiscoSpeed(Number(e.target.value))}
+                                                className="range range-xs [--range-bg:#101010] [--range-fill:#8d8d8d] [--range-thumb:#d6d6d6]"
+                                                aria-label="Disco mode speed"
+                                            />
+                                        </label>
+                                    </div>
+                                )}
+                            </div>
+                        </details>
+                    ))}
                 </div>
             </div>
 
-            <div className="relative z-10 flex shrink-0 items-center gap-3 border-t border-[#3d3d3d] bg-[#1d1d1d] px-4 py-2">
-                {audioTrack && (
-                    <div className="flex items-center gap-3 w-full min-w-0">
-                        <audio ref={audioRef} src={audioTrack.url} preload="metadata" className="hidden" />
-                        <span className="shrink-0 text-xs uppercase tracking-[0.08em] text-[#9f9f9f]">Track</span>
-                        <span className="shrink-0 rounded border border-[#5c5c5c] bg-[#202020] px-2 py-1 font-mono text-xs text-[#c7c7c7]">
-                            {formatClock(audioCurrentTime)} / {formatClock(audioDuration)}
-                        </span>
-                        <input
-                            type="range"
-                            min={0}
-                            max={scrubMax}
-                            step={0.01}
-                            value={Math.min(audioCurrentTime, scrubMax)}
-                            onChange={onAudioScrub}
-                            className="range range-xs flex-1 min-w-0 [--range-bg:#1b1b1b] [--range-fill:#8f8f8f] [--range-thumb:#d6d6d6]"
-                            aria-label="Track timeline scrubber"
-                        />
-                    </div>
-                )}
-                {selectedMidiTrack ? <>
-                    <span className="text-xs text-[#b2b2b2]">
-                        Adding to: <strong>{selectedMidiTrack.name}</strong>
-                    </span>
-                    <ChordForm onAdd={block => addBlock(selectedTrack, block)} compact />
-                </> : <span className="text-xs text-[#868686]">Click a track to add chords</span>}
+            <div className="border-t border-[#2f2f2f] bg-[#111111]/95 px-3 py-3">
+                <div className="relative z-10 flex flex-wrap items-center gap-3 rounded-2xl border border-[#2f2f2f] bg-[#191919] px-4 py-3">
+                    {audioTrack && (
+                        <div className="flex min-w-[16rem] flex-1 items-center gap-3">
+                            <audio ref={audioRef} src={audioTrack.url} preload="metadata" className="hidden" />
+                            <span className="shrink-0 text-[11px] uppercase tracking-[0.08em] text-[#9f9f9f]">Track</span>
+                            <span className="shrink-0 rounded-full border border-[#464646] bg-[#202020] px-2 py-1 font-mono text-[11px] text-[#c7c7c7]">
+                                {formatClock(audioCurrentTime)} / {formatClock(audioDuration)}
+                            </span>
+                            <input
+                                type="range"
+                                min={0}
+                                max={scrubMax}
+                                step={0.01}
+                                value={Math.min(audioCurrentTime, scrubMax)}
+                                onChange={onAudioScrub}
+                                className="range range-xs min-w-0 flex-1 [--range-bg:#1b1b1b] [--range-fill:#8f8f8f] [--range-thumb:#d6d6d6]"
+                                aria-label="Track timeline scrubber"
+                            />
+                        </div>
+                    )}
+                    {selectedMidiTrack ? (
+                        <div className="flex flex-wrap items-center gap-3">
+                            <span className="text-xs text-[#b2b2b2]">
+                                Adding to: <strong>{selectedMidiTrack.name}</strong>
+                            </span>
+                            <ChordForm onAdd={block => addBlock(selectedTrack, block)} compact />
+                        </div>
+                    ) : (
+                        <span className="text-xs text-[#868686]">Click a track to add chords</span>
+                    )}
+                </div>
             </div>
             <TutorialModal open={tutorialOpen} onClose={() => setTutorialOpen(false)} />
         </div>
