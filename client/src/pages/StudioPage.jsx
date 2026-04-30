@@ -6,7 +6,7 @@ import ChordForm from '../components/ChordForm';
 import GestureChordPanel from '../components/GestureChordPanel';
 import TutorialModal from '../components/TutorialModal';
 import WebcamComponent from '../components/WebcamComponent';
-import { getSelectedTrackSummary, getStudioActivitySummary, STUDIO_UTILITY_SECTIONS } from './studioLayout';
+import { getBackdropModeSummary, getSelectedTrackSummary, getStudioActivitySummary, STUDIO_UTILITY_SECTIONS } from './studioLayout';
 
 /**
  * Instruments available for each track.
@@ -63,6 +63,8 @@ function StudioPage() {
     const [ttsEnabled, setTtsEnabled] = useState(true);
     const [availableVoices, setAvailableVoices] = useState([]);
     const [selectedVoiceURI, setSelectedVoiceURI] = useState('');
+    const [bigWebcamMode, setBigWebcamMode] = useState(false);
+    const [webcamPoweredOn, setWebcamPoweredOn] = useState(false);
     const playbackRef = useRef(null);
     const tracksRef = useRef(tracks);
     const fileInputRef = useRef(null);
@@ -111,6 +113,22 @@ function StudioPage() {
         hasAudioTrack,
         isPlaying,
     });
+    const backdropModeSummary = getBackdropModeSummary({
+        bigWebcamMode,
+        isWebcamOn: webcamPoweredOn,
+    });
+    const shellGlassClass = bigWebcamMode
+        ? 'border-white/12 bg-[#121212]/60 backdrop-blur-md shadow-[0_18px_55px_rgba(0,0,0,0.34)]'
+        : 'border-[#2f2f2f] bg-[#191919]';
+    const railGlassClass = bigWebcamMode
+        ? 'border-white/12 bg-[#121212]/58 backdrop-blur-md'
+        : 'border-[#303030] bg-[#181818]';
+    const utilityGlassClass = bigWebcamMode
+        ? 'border-white/12 bg-[#121212]/58 backdrop-blur-md'
+        : 'border-[#303030] bg-[#171717]';
+    const gridGlassClass = bigWebcamMode
+        ? 'border-white/12 bg-[#151515]/54 backdrop-blur-sm'
+        : 'border-[#303030] bg-[#1a1a1a]';
 
     /**
      * Sync the current sequencer step with MP3 playback time.
@@ -410,7 +428,7 @@ function StudioPage() {
 
     return (
         <div
-            className={`relative h-screen flex flex-col overflow-hidden bg-[#141414] text-[#d7d7d7] ${discoMode ? 'disco-mode' : ''}`}
+            className={`relative h-screen flex flex-col overflow-hidden ${bigWebcamMode ? 'bg-transparent' : 'bg-[#141414]'} text-[#d7d7d7] ${discoMode ? 'disco-mode' : ''}`}
             style={{
                 '--disco-hue-duration': `${discoDuration}ms`,
                 '--disco-flash-duration': `${Math.max(220, Math.floor(discoDuration * 0.52))}ms`,
@@ -418,7 +436,7 @@ function StudioPage() {
         >
             {discoMode && <div className="disco-flash-overlay pointer-events-none absolute inset-0 z-40" />}
             <div className="border-b border-[#2f2f2f] bg-[#111111]/95 px-3 py-3">
-                <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#2f2f2f] bg-[#191919] px-4 py-3">
+                <div className={`flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 ${shellGlassClass}`}>
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-3">
                             <h1 className="text-sm font-bold uppercase tracking-[0.24em] text-[#f2f2f2]">BEN</h1>
@@ -460,7 +478,7 @@ function StudioPage() {
             </div>
 
             <div className="relative z-10 flex flex-1 gap-3 overflow-hidden p-3">
-                <div className="flex w-56 shrink-0 flex-col overflow-hidden rounded-2xl border border-[#303030] bg-[#181818]">
+                <div className={`flex w-56 shrink-0 flex-col overflow-hidden rounded-2xl border ${railGlassClass}`}>
                     <div className="flex items-center justify-between border-b border-[#3d3d3d] bg-[#202020] px-3 py-2">
                         <div>
                             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8f8f8f]">Tracks</p>
@@ -530,7 +548,7 @@ function StudioPage() {
                     ))}
                 </div>
 
-                <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#303030] bg-[#1a1a1a]">
+                <div className={`flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border ${gridGlassClass}`}>
                     {/* beat numbers */}
                     <div className="sticky top-0 z-10 flex h-8 border-b border-[#353535] bg-[#202020]">
                         {Array.from({ length: gridCols }).map((_, i) =>
@@ -606,7 +624,7 @@ function StudioPage() {
                     </div>
                 </div>
 
-                <div className="flex w-[22rem] shrink-0 flex-col gap-3 overflow-y-auto rounded-2xl border border-[#303030] bg-[#171717] p-3">
+                <div className={`flex w-[22rem] shrink-0 flex-col gap-3 overflow-y-auto rounded-2xl border p-3 ${utilityGlassClass}`}>
                     <div className={`rounded-2xl border px-3 py-3 ${
                         selectedTrackSummary.ready
                             ? 'border-[#3f4f3d] bg-[#1d241d]'
@@ -616,11 +634,22 @@ function StudioPage() {
                         <p className="mt-1 text-sm font-semibold text-[#efefef]">{selectedTrackSummary.title}</p>
                         <p className="mt-1 text-xs leading-5 text-[#a7a7a7]">{selectedTrackSummary.detail}</p>
                     </div>
+                    <div className={`rounded-2xl border px-3 py-3 ${
+                        bigWebcamMode ? 'border-[#4066b7] bg-[#132033]/78 backdrop-blur-sm' : 'border-[#353535] bg-[#202020]'
+                    }`}>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8f8f8f]">Webcam Backdrop</p>
+                        <p className="mt-1 text-sm font-semibold text-[#efefef]">{backdropModeSummary.label}</p>
+                        <p className="mt-1 text-xs leading-5 text-[#a7a7a7]">{backdropModeSummary.detail}</p>
+                    </div>
 
                     {STUDIO_UTILITY_SECTIONS.map((section) => (
                         <details
                             key={section.id}
-                            className="studio-collapsible rounded-2xl border border-[#303030] bg-[#1d1d1d]"
+                            className={`studio-collapsible rounded-2xl border ${
+                                bigWebcamMode
+                                    ? 'border-white/12 bg-[#161616]/70 backdrop-blur-sm'
+                                    : 'border-[#303030] bg-[#1d1d1d]'
+                            }`}
                             open={section.defaultOpen}
                         >
                             <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-3">
@@ -637,7 +666,11 @@ function StudioPage() {
                                             onConfirmedChord={announceConfirmedChord}
                                             disabled={!selectedTrack}
                                         />
-                                        <WebcamComponent />
+                                        <WebcamComponent
+                                            bigMode={bigWebcamMode}
+                                            onBigModeChange={setBigWebcamMode}
+                                            onPowerChange={setWebcamPoweredOn}
+                                        />
                                     </div>
                                 )}
 
@@ -773,7 +806,7 @@ function StudioPage() {
             </div>
 
             <div className="border-t border-[#2f2f2f] bg-[#111111]/95 px-3 py-3">
-                <div className="relative z-10 flex flex-wrap items-center gap-3 rounded-2xl border border-[#2f2f2f] bg-[#191919] px-4 py-3">
+                <div className={`relative z-10 flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 ${shellGlassClass}`}>
                     {audioTrack && (
                         <div className="flex min-w-[16rem] flex-1 items-center gap-3">
                             <audio ref={audioRef} src={audioTrack.url} preload="metadata" className="hidden" />

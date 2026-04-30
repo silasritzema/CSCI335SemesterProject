@@ -34,3 +34,24 @@ export function getStudioActivitySummary({ trackCount, hasAudioTrack, isPlaying 
 
     return `${trackLabel} · Sequencer ready`;
 }
+
+export function getBackdropModeSummary({ bigWebcamMode, isWebcamOn }) {
+    if (!bigWebcamMode) {
+        return {
+            label: 'Backdrop Off',
+            detail: 'Use big webcam mode to push the live camera behind the studio overlays.',
+        };
+    }
+
+    if (!isWebcamOn) {
+        return {
+            label: 'Backdrop Waiting',
+            detail: 'Power on the webcam to fill the full app background.',
+        };
+    }
+
+    return {
+        label: 'Backdrop Live',
+        detail: 'The webcam is covering the full app background behind the studio glass panels.',
+    };
+}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { drawHandSkeleton } from '../handSkeletonOverlay';
 
 /** Match installed @mediapipe/tasks-vision for WASM URL. */
@@ -66,9 +67,11 @@ function drawRapperMask(ctx, landmarks, vw, vh, img) {
   ctx.restore();
 }
 
-export default function WebcamComponent() {
+export default function WebcamComponent({ bigMode = false, onBigModeChange, onPowerChange }) {
   const videoRef = useRef(null);
+  const backgroundVideoRef = useRef(null);
   const canvasRef = useRef(null);
+  const backgroundCanvasRef = useRef(null);
   const landmarkerRef = useRef(null);
   const maskImgRef = useRef(null);
   const rafRef = useRef(0);
@@ -95,6 +98,10 @@ export default function WebcamComponent() {
         videoRef.current.srcObject = stream;
         await videoRef.current.play().catch(() => {});
       }
+      if (backgroundVideoRef.current) {
+        backgroundVideoRef.current.srcObject = stream;
+        await backgroundVideoRef.current.play().catch(() => {});
+      }
       setIsOn(true);
     } catch (err) {
       setError(err.message || 'Failed to access webcam');
@@ -110,8 +117,29 @@ export default function WebcamComponent() {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    if (backgroundVideoRef.current) {
+      backgroundVideoRef.current.srcObject = null;
+    }
     setIsOn(false);
   };
+
+  useEffect(() => {
+    onPowerChange?.(isOn);
+  }, [isOn, onPowerChange]);
+
+  useEffect(() => {
+    if (!isOn || !streamRef.current) return;
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {});
+    }
+
+    if (backgroundVideoRef.current) {
+      backgroundVideoRef.current.srcObject = streamRef.current;
+      backgroundVideoRef.current.play().catch(() => {});
+    }
+  }, [isOn]);
 
   useEffect(() => {
     let cancelled = false;
@@ -219,9 +247,7 @@ export default function WebcamComponent() {
     };
   }, [isOn, overlayMode]);
 
-  const drawFrame = useCallback(() => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
+  const drawSurface = useCallback((video, canvas) => {
     if (!video || !canvas || !isOn || overlayMode === 'none') return;
 
     if (video.readyState < 2) return;
@@ -276,6 +302,11 @@ export default function WebcamComponent() {
     }
   }, [isOn, overlayMode, filterId]);
 
+  const drawFrame = useCallback(() => {
+    drawSurface(videoRef.current, canvasRef.current);
+    drawSurface(backgroundVideoRef.current ?? videoRef.current, backgroundCanvasRef.current);
+  }, [drawSurface]);
+
   useEffect(() => {
     if (!isOn || overlayMode === 'none') {
       if (rafRef.current) {
@@ -304,22 +335,76 @@ export default function WebcamComponent() {
     };
   }, []);
 
+  const backgroundLayer = bigMode ? createPortal(
+    <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden bg-[#050505]">
+      {isOn ? (
+        <>
+          <video
+            ref={backgroundVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className={`absolute inset-0 h-full w-full object-cover ${
+              overlayMode !== 'none' ? 'opacity-0' : ''
+            }`}
+            style={{
+              transform: 'scaleX(-1)',
+              filter: WEBCAM_FILTERS[filterId] ?? WEBCAM_FILTERS.none,
+            }}
+          />
+          {overlayMode !== 'none' && (
+            <canvas
+              ref={backgroundCanvasRef}
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          )}
+          <div className="absolute inset-0 bg-black/32" />
+          <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-black/55 to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-black/60 to-transparent" />
+        </>
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(90,90,90,0.25),_rgba(5,5,5,0.95)_58%)]">
+          <div className="rounded-2xl border border-white/12 bg-black/35 px-6 py-4 text-center backdrop-blur-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#a8a8a8]">Big Webcam Mode</p>
+            <p className="mt-2 text-sm text-[#ececec]">Power on the webcam to fill the full app background.</p>
+          </div>
+        </div>
+      )}
+    </div>,
+    document.body,
+  ) : null;
+
   return (
-    <div className="relative w-full overflow-hidden rounded-lg border border-[#3f3f3f] bg-[#1a1a1a] p-3">
+    <>
+      {backgroundLayer}
+      <div className="relative w-full overflow-hidden rounded-lg border border-[#3f3f3f] bg-[#1a1a1a] p-3">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[#727272]" />
-      <div className="mb-2 flex items-center justify-between border-b border-[#4a4a4a] pb-2">
+      <div className="mb-2 flex items-center justify-between gap-2 border-b border-[#4a4a4a] pb-2">
         <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-[#dddddd]">Webcam</h3>
-        <button
-          type="button"
-          className={`btn btn-xs h-7 min-h-7 rounded border-0 px-3 text-[10px] font-semibold uppercase tracking-wide ${
-            isOn
-              ? 'bg-[#b6424a] text-[#ffe4e7]'
-              : 'bg-[#616161] text-[#f3f3f3]'
-          }`}
-          onClick={isOn ? stopWebcam : startWebcam}
-        >
-          {isOn ? 'Power Off' : 'Power On'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className={`btn btn-xs h-7 min-h-7 rounded border px-2 text-[10px] font-semibold uppercase tracking-wide ${
+              bigMode
+                ? 'border-[#6f94ff] bg-[#27407a] text-[#edf2ff]'
+                : 'border-[#505050] bg-[#242424] text-[#d8d8d8]'
+            }`}
+            onClick={() => onBigModeChange?.(!bigMode)}
+          >
+            {bigMode ? 'Backdrop On' : 'Backdrop Off'}
+          </button>
+          <button
+            type="button"
+            className={`btn btn-xs h-7 min-h-7 rounded border-0 px-3 text-[10px] font-semibold uppercase tracking-wide ${
+              isOn
+                ? 'bg-[#b6424a] text-[#ffe4e7]'
+                : 'bg-[#616161] text-[#f3f3f3]'
+            }`}
+            onClick={isOn ? stopWebcam : startWebcam}
+          >
+            {isOn ? 'Power Off' : 'Power On'}
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -362,6 +447,18 @@ export default function WebcamComponent() {
         <span className="h-3 w-3 rounded-full border border-[#666666] bg-[#4b4b4b]" />
         <span className="h-3 w-3 rounded-full border border-[#666666] bg-[#4b4b4b]" />
         <span className="h-[2px] flex-1 rounded bg-[#7a7a7a]" />
+      </div>
+
+      <div className="mb-2 rounded border border-[#404040] bg-[#141414] px-2 py-1.5">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#b1b1b1]">Backdrop</div>
+        <p className="mt-1 text-xs text-[#d8d8d8]">{bigMode ? 'Fullscreen background enabled.' : 'Fullscreen background disabled.'}</p>
+        <p className="mt-1 text-[11px] leading-5 text-[#8d8d8d]">
+          {bigMode
+            ? isOn
+              ? 'The webcam feed is rendering behind the studio overlays.'
+              : 'Turn the webcam on to fill the background.'
+            : 'Toggle backdrop on to push the webcam behind the full studio layout.'}
+        </p>
       </div>
 
       {overlayMode !== 'none' && landmarkerError && (
@@ -415,6 +512,7 @@ export default function WebcamComponent() {
           </>
         )}
       </div>
-    </div>
+      </div>
+    </>
   );
 }
