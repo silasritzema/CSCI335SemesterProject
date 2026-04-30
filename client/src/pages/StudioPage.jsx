@@ -428,14 +428,14 @@ function StudioPage() {
 
     return (
         <div
-            className={`relative h-screen flex flex-col overflow-hidden ${bigWebcamMode ? 'bg-transparent' : 'bg-[#141414]'} text-[#d7d7d7] ${discoMode ? 'disco-mode' : ''}`}
+            className={`relative z-10 h-screen flex flex-col overflow-hidden ${bigWebcamMode ? 'bg-transparent' : 'bg-[#141414]'} text-[#d7d7d7] ${discoMode ? 'disco-mode' : ''}`}
             style={{
                 '--disco-hue-duration': `${discoDuration}ms`,
                 '--disco-flash-duration': `${Math.max(220, Math.floor(discoDuration * 0.52))}ms`,
             }}
         >
             {discoMode && <div className="disco-flash-overlay pointer-events-none absolute inset-0 z-40" />}
-            <div className="border-b border-[#2f2f2f] bg-[#111111]/95 px-3 py-3">
+            <div className="relative z-50 shrink-0 border-b border-[#2f2f2f] bg-[#111111]/95 px-3 py-3">
                 <div className={`flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 ${shellGlassClass}`}>
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-3">
