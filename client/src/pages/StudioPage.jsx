@@ -1,8 +1,10 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { playChord } from '../audio/audioEngine';
 import { exportMidiMultiTrack, importMidiMultiTrack } from '../audio/midiExport';
+import { getChordAnnouncement, getTtsStatusLabel, isTtsSupported, speakText } from '../audio/tts';
 import ChordForm from '../components/ChordForm';
 import GestureChordPanel from '../components/GestureChordPanel';
+import TutorialModal from '../components/TutorialModal';
 import WebcamComponent from '../components/WebcamComponent';
 
 /**
@@ -56,149 +58,18 @@ function StudioPage() {
     const [audioCurrentTime, setAudioCurrentTime] = useState(0);
     const [discoMode, setDiscoMode] = useState(false);
     const [discoSpeed, setDiscoSpeed] = useState(1100);
+    const [tutorialOpen, setTutorialOpen] = useState(false);
+    const [ttsEnabled, setTtsEnabled] = useState(true);
     const playbackRef = useRef(null);
     const tracksRef = useRef(tracks);
     const fileInputRef = useRef(null);
     const mp3InputRef = useRef(null);
     const audioRef = useRef(null);
-    const particleCanvasRef = useRef(null);
+    const ttsSupported = isTtsSupported();
 
     useEffect(() => {
         tracksRef.current = tracks;
     }, [tracks]);
-
-    useEffect(() => {
-        const canvas = particleCanvasRef.current;
-        if (!canvas) return;
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
-        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        let rafId = 0;
-        let particles = [];
-        const mouse = { x: 0, y: 0, active: false };
-
-        function resize() {
-            const dpr = window.devicePixelRatio || 1;
-            const width = window.innerWidth;
-            const height = window.innerHeight;
-            canvas.width = Math.floor(width * dpr);
-            canvas.height = Math.floor(height * dpr);
-            canvas.style.width = `${width}px`;
-            canvas.style.height = `${height}px`;
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-            const count = Math.max(52, Math.min(120, Math.floor((width * height) / 18000)));
-            particles = Array.from({ length: count }, () => ({
-                x: Math.random() * width,
-                y: Math.random() * height,
-                vx: (Math.random() - 0.5) * 0.22,
-                vy: (Math.random() - 0.5) * 0.22,
-                r: Math.random() * 1.4 + 0.6,
-            }));
-        }
-
-        function draw() {
-            const width = canvas.clientWidth;
-            const height = canvas.clientHeight;
-            ctx.clearRect(0, 0, width, height);
-
-            const maxDist = 140;
-            const maxDistSq = maxDist * maxDist;
-            const mouseDist = 170;
-            const mouseDistSq = mouseDist * mouseDist;
-
-            for (let i = 0; i < particles.length; i += 1) {
-                const p = particles[i];
-                if (!reducedMotion) {
-                    p.x += p.vx;
-                    p.y += p.vy;
-                    if (p.x <= 0 || p.x >= width) p.vx *= -1;
-                    if (p.y <= 0 || p.y >= height) p.vy *= -1;
-                    p.x = Math.max(0, Math.min(width, p.x));
-                    p.y = Math.max(0, Math.min(height, p.y));
-                }
-
-                for (let j = i + 1; j < particles.length; j += 1) {
-                    const q = particles[j];
-                    const dx = p.x - q.x;
-                    const dy = p.y - q.y;
-                    const distSq = dx * dx + dy * dy;
-                    if (distSq > maxDistSq) continue;
-                    const alpha = (1 - distSq / maxDistSq) * 0.22;
-                    ctx.strokeStyle = `rgba(190, 190, 190, ${alpha})`;
-                    ctx.lineWidth = 0.8;
-                    ctx.beginPath();
-                    ctx.moveTo(p.x, p.y);
-                    ctx.lineTo(q.x, q.y);
-                    ctx.stroke();
-                }
-
-                if (mouse.active) {
-                    const mdx = p.x - mouse.x;
-                    const mdy = p.y - mouse.y;
-                    const mouseSq = mdx * mdx + mdy * mdy;
-                    if (mouseSq < mouseDistSq) {
-                        const alpha = (1 - mouseSq / mouseDistSq) * 0.32;
-                        ctx.strokeStyle = `rgba(210, 210, 210, ${alpha})`;
-                        ctx.lineWidth = 0.95;
-                        ctx.beginPath();
-                        ctx.moveTo(p.x, p.y);
-                        ctx.lineTo(mouse.x, mouse.y);
-                        ctx.stroke();
-                    }
-                }
-            }
-
-            for (const p of particles) {
-                ctx.fillStyle = 'rgba(225, 225, 225, 0.55)';
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-                ctx.fill();
-            }
-
-            if (mouse.active) {
-                ctx.fillStyle = 'rgba(230, 230, 230, 0.28)';
-                ctx.beginPath();
-                ctx.arc(mouse.x, mouse.y, 2.4, 0, Math.PI * 2);
-                ctx.fill();
-            }
-
-            if (!reducedMotion) {
-                rafId = window.requestAnimationFrame(draw);
-            }
-        }
-
-        function onPointerMove(e) {
-            const rect = canvas.getBoundingClientRect();
-            const nextX = e.clientX - rect.left;
-            const nextY = e.clientY - rect.top;
-            const inBounds = nextX >= 0 && nextX <= rect.width && nextY >= 0 && nextY <= rect.height;
-            mouse.x = nextX;
-            mouse.y = nextY;
-            mouse.active = inBounds;
-            if (reducedMotion) draw();
-        }
-
-        function onPointerLeave() {
-            mouse.active = false;
-            if (reducedMotion) draw();
-        }
-
-        resize();
-        draw();
-        window.addEventListener('resize', resize);
-        window.addEventListener('pointermove', onPointerMove);
-        window.addEventListener('pointerleave', onPointerLeave);
-
-        return () => {
-            window.removeEventListener('resize', resize);
-            window.removeEventListener('pointermove', onPointerMove);
-            window.removeEventListener('pointerleave', onPointerLeave);
-            if (rafId) window.cancelAnimationFrame(rafId);
-        };
-    }, []);
 
     const maxLen = Math.max(...tracks.map(t => getLen(t.slots)), 0);
     const gridCols = maxLen + 1;
@@ -212,14 +83,15 @@ function StudioPage() {
      * Sync the current sequencer step with MP3 playback time.
      * This keeps the step indicator aligned when an audio track is playing.
      */
-    function syncStepWithAudioTime(currentSec, durationSec = audioDuration) {
-        if (!hasBlocks || !Number.isFinite(currentSec) || !Number.isFinite(durationSec) || durationSec <= 0) {
+    const syncStepWithAudioTime = useCallback((currentSec, durationSec) => {
+        const safeDuration = Number.isFinite(durationSec) ? durationSec : audioDuration;
+        if (!hasBlocks || !Number.isFinite(currentSec) || !Number.isFinite(safeDuration) || safeDuration <= 0) {
             return;
         }
-        const ratio = Math.min(Math.max(currentSec / durationSec, 0), 1);
+        const ratio = Math.min(Math.max(currentSec / safeDuration, 0), 1);
         const step = Math.min(maxLen - 1, Math.floor(ratio * maxLen));
         setActiveStep(Math.max(step, 0));
-    }
+    }, [audioDuration, hasBlocks, maxLen]);
 
     /**
      * Stop all playback and optionally reset playback position.
@@ -308,13 +180,24 @@ function StudioPage() {
     function updateTrack(id, changes) {
         setTracks(tracks.map(t => t.id === id ? { ...t, ...changes } : t));
     }
-},{
+
     function addBlock(trackId, block) {
         setTracks(prev => prev.map(t => {
             if (t.id !== trackId) return t;
             let next = getLen(t.slots);
             return { ...t, slots: { ...t.slots, [next]: block } };
         }));
+    }
+
+    function announceConfirmedChord(block) {
+        if (!ttsEnabled || !ttsSupported) return;
+        const message = getChordAnnouncement(block);
+        speakText(message);
+    }
+
+    function testVoice() {
+        if (!ttsEnabled || !ttsSupported) return;
+        speakText('Voice guidance ready');
     }
 
     function removeBlock(trackId, slot) {
@@ -452,7 +335,7 @@ function StudioPage() {
             el.removeEventListener('timeupdate', onTimeUpdate);
             el.removeEventListener('ended', onEnded);
         };
-    }, [audioTrack, hasBlocks, maxLen, audioDuration]);
+    }, [audioTrack, hasBlocks, maxLen, audioDuration, syncStepWithAudioTime]);
 
     function onAudioScrub(e) {
         const next = Number(e.target.value);
@@ -502,9 +385,6 @@ function StudioPage() {
                 '--disco-flash-duration': `${Math.max(220, Math.floor(discoDuration * 0.52))}ms`,
             }}
         >
-            <div className="pointer-events-none absolute inset-0">
-                <canvas ref={particleCanvasRef} className="particle-network-canvas absolute inset-0 h-full w-full" />
-            </div>
             {discoMode && <div className="disco-flash-overlay pointer-events-none absolute inset-0 z-40" />}
             <div className="flex items-center gap-2 border-b border-[#3d3d3d] bg-[#1d1d1d] px-4 py-2">
                 <h1 className="mr-4 text-sm font-bold uppercase tracking-[0.22em] text-[#e5e5e5]">Beats by Ben</h1>
@@ -570,6 +450,33 @@ function StudioPage() {
                     onClick={addTrack}
                 >
                     + Track
+                </button>
+                <button
+                    className={`btn btn-sm h-8 min-h-8 rounded border px-3 text-[11px] font-semibold uppercase tracking-[0.08em] ${
+                        ttsEnabled && ttsSupported
+                            ? 'border-[#7a7a7a] bg-[#3d3d3d] text-[#f0f0f0]'
+                            : 'border-[#5a5a5a] bg-[#262626] text-[#b6b6b6]'
+                    }`}
+                    onClick={() => setTtsEnabled((enabled) => !enabled)}
+                    disabled={!ttsSupported}
+                >
+                    {ttsEnabled ? 'TTS On' : 'TTS Off'}
+                </button>
+                <button
+                    className="btn btn-sm h-8 min-h-8 rounded border border-[#5f5f5f] bg-[#2b2b2b] px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#e6e6e6]"
+                    onClick={testVoice}
+                    disabled={!ttsEnabled || !ttsSupported}
+                >
+                    Test Voice
+                </button>
+                <span className="rounded border border-[#5a5a5a] bg-[#202020] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#c8c8c8]">
+                    {getTtsStatusLabel(ttsEnabled, ttsSupported)}
+                </span>
+                <button
+                    className="btn btn-sm h-8 min-h-8 rounded border border-[#5f5f5f] bg-[#2b2b2b] px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#e6e6e6]"
+                    onClick={() => setTutorialOpen(true)}
+                >
+                    Tutorial
                 </button>
             </div>
 
@@ -637,9 +544,17 @@ function StudioPage() {
                     {/* beat numbers */}
                     <div className="sticky top-0 z-10 flex h-7 border-b border-[#3f3f3f] bg-[#202020]">
                         {Array.from({ length: gridCols }).map((_, i) =>
-                            <div key={i} className={`flex w-24 shrink-0 items-center border-r border-[#3f3f3f] px-2 font-mono text-xs ${
-                                activeStep === i ? 'font-bold text-[#d6d6d6]' : 'text-[#9b9b9b]'
+                            <div key={i} className={`relative flex w-24 shrink-0 items-center border-r border-[#3f3f3f] px-2 font-mono text-xs ${
+                                activeStep === i && isPlaying
+                                    ? 'font-bold text-[#f2f2f2] bg-[#d8d8d80d]'
+                                    : 'text-[#9b9b9b]'
                             }`}>
+                                {activeStep === i && isPlaying && (
+                                    <>
+                                        <div className="absolute inset-y-0 left-0 w-px bg-[#f4f4f4]/90" />
+                                        <div className="absolute left-0 right-0 top-0 h-px bg-[#f4f4f4]/55" />
+                                    </>
+                                )}
                                 {i + 1}
                             </div>
                         )}
@@ -658,19 +573,25 @@ function StudioPage() {
 
                                 return <div key={col}
                                     className={`relative h-full w-24 shrink-0 border-r border-[#343434] p-1 ${
-                                        active && isPlaying ? 'bg-[#7d7d7d1f]' : ''
+                                        active && isPlaying ? 'bg-[#f3f3f312]' : ''
                                     } ${hovering && dragSrc ? 'bg-[#7d7d7d2d]' : ''}`}
                                     onDragOver={e => { e.preventDefault(); setDropTarget({ trackId: track.id, slot: col }); }}
                                     onDragLeave={() => setDropTarget(null)}
                                     onDrop={() => onDrop(track.id, col)}>
 
-                                    {active && isPlaying && <div className="absolute bottom-0 left-0 top-0 w-0.5 bg-[#b3b3b3]" />}
+                                    {active && isPlaying && (
+                                        <>
+                                            <div className="absolute bottom-0 left-0 top-0 w-px bg-[#fafafa]/95" />
+                                            <div className="absolute left-0 right-0 top-0 h-px bg-[#fafafa]/40" />
+                                            <div className="absolute bottom-1 left-0 h-2.5 w-2.5 -translate-x-1/2 rounded-full border border-[#111] bg-[#fafafa] shadow-[0_0_10px_rgba(255,255,255,0.35)]" />
+                                        </>
+                                    )}
 
                                     {block && <div draggable
                                         onDragStart={() => setDragSrc({ trackId: track.id, slot: col })}
                                         onDragEnd={() => { setDragSrc(null); setDropTarget(null); }}
                                         className={`group relative flex h-full cursor-grab flex-col justify-center rounded px-2 active:cursor-grabbing ${
-                                            track.muted ? 'opacity-20' : active && isPlaying ? 'opacity-95' : 'opacity-70'
+                                            track.muted ? 'opacity-20' : active && isPlaying ? 'opacity-100 ring-1 ring-white/40 shadow-[0_0_16px_rgba(255,255,255,0.08)]' : 'opacity-70'
                                         } ${isDragged ? 'opacity-20!' : ''}`}
                                         style={{
                                             backgroundColor: color,
@@ -680,8 +601,12 @@ function StudioPage() {
                                             {block.chord.rootNote}{block.chord.quality === 'minor' ? 'm' : ''}
                                         </span>
                                         <span className="text-xs leading-tight text-[#111111cc]">Oct {block.chord.octave}</span>
-                                        <button className="btn btn-ghost btn-xs absolute right-0 top-0 text-[#111] opacity-0 group-hover:opacity-80"
-                                            onClick={() => removeBlock(track.id, col)}>✕</button>
+                                        <button
+                                            className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#11111155] text-[11px] font-bold text-[#111] opacity-0 transition-opacity group-hover:opacity-100 hover:bg-[#11111177] focus:opacity-100"
+                                            onClick={() => removeBlock(track.id, col)}
+                                        >
+                                            ✕
+                                        </button>
                                     </div>}
                                 </div>;
                             })}
@@ -692,6 +617,7 @@ function StudioPage() {
                 <div className="flex w-96 shrink-0 flex-col gap-4 overflow-y-auto border-l border-[#3d3d3d] bg-[#1b1b1b] p-4">
                     <GestureChordPanel
                         onAdd={block => selectedTrack && addBlock(selectedTrack, block)}
+                        onConfirmedChord={announceConfirmedChord}
                         disabled={!selectedTrack}
                     />
                     <WebcamComponent />
@@ -725,6 +651,7 @@ function StudioPage() {
                     <ChordForm onAdd={block => addBlock(selectedTrack, block)} compact />
                 </> : <span className="text-xs text-[#868686]">Click a track to add chords</span>}
             </div>
+            <TutorialModal open={tutorialOpen} onClose={() => setTutorialOpen(false)} />
         </div>
     );
 }

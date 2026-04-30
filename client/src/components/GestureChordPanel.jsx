@@ -1,94 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Block from '../models/Block';
 import Chord from '../models/Chord';
+import { countFingers, detectGesture, getHandLandmarks, getHandedness, normalizeLabel } from '../gestureMapping';
+import { drawHandSkeleton } from '../handSkeletonOverlay';
 
 const MP_VERSION = '0.10.34';
 const HOLD_MS = 1500;
 const MODEL_URL =
     'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 
-const FINGER_ROOT = { 1: 'C', 2: 'D', 3: 'E', 4: 'F', 5: 'G' };
-
-const HAND_CONNECTIONS = [
-    [0, 1], [1, 2], [2, 3], [3, 4],
-    [0, 5], [5, 6], [6, 7], [7, 8],
-    [0, 9], [9, 10], [10, 11], [11, 12],
-    [0, 13], [13, 14], [14, 15], [15, 16],
-    [0, 17], [17, 18], [18, 19], [19, 20],
-    [5, 9], [9, 13], [13, 17],
-];
-
-function countFingers(lm) {
-    const pairs = [[8, 6], [12, 10], [16, 14], [20, 18]];
-    return pairs.reduce((n, [tip, pip]) => n + (lm[tip].y < lm[pip].y ? 1 : 0), 0);
-}
-
-// Use wrist x-position rather than MediaPipe's handedness label.
-// In camera space (before mirror): x < 0.5 = camera-left = person's RIGHT hand.
-// Person's left hand (x > 0.5) → quality; person's right hand (x < 0.5) → root.
-function isRightHand(lm) {
-    return lm[0].x < 0.5;
-}
-
-function detectGesture(results) {
-    let quality = null;
-    let root = null;
-
-    for (let i = 0; i < (results.handLandmarks?.length ?? 0); i++) {
-        const lm = results.handLandmarks[i];
-        const n = countFingers(lm);
-
-        if (isRightHand(lm)) {
-            // person's right hand → root (1–5 fingers)
-            if (FINGER_ROOT[n]) root = FINGER_ROOT[n];
-        } else {
-            // person's left hand → quality
-            if (n >= 4) quality = 'major';
-            else if (n <= 1) quality = 'minor';
-        }
-    }
-
-    return { quality, root };
-}
-
-function drawSkeleton(ctx, results, vw, vh) {
-    for (let i = 0; i < (results.handLandmarks?.length ?? 0); i++) {
-        const lm = results.handLandmarks[i];
-        // purple = left hand (quality), green = right hand (root)
-        const color = isRightHand(lm) ? '#34d399' : '#a78bfa';
-        const mx = (x) => (1 - x) * vw;
-        const my = (y) => y * vh;
-
-        // Connections with glow
-        ctx.save();
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 3;
-        ctx.shadowColor = color;
-        ctx.shadowBlur = 8;
-        for (const [a, b] of HAND_CONNECTIONS) {
-            ctx.beginPath();
-            ctx.moveTo(mx(lm[a].x), my(lm[a].y));
-            ctx.lineTo(mx(lm[b].x), my(lm[b].y));
-            ctx.stroke();
-        }
-
-        // Landmark dots: white ring + colored fill + glow
-        ctx.shadowBlur = 10;
-        for (const pt of lm) {
-            ctx.fillStyle = '#ffffff';
-            ctx.beginPath();
-            ctx.arc(mx(pt.x), my(pt.y), 6, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.arc(mx(pt.x), my(pt.y), 4, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        ctx.restore();
-    }
-}
-
-export default function GestureChordPanel({ onAdd, disabled }) {
+export default function GestureChordPanel({ onAdd, onConfirmedChord, disabled }) {
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
     const streamRef = useRef(null);
@@ -109,6 +30,11 @@ export default function GestureChordPanel({ onAdd, disabled }) {
     const [error, setError] = useState(null);
     const [gesture, setGesture] = useState({ quality: null, root: null });
     const [handCount, setHandCount] = useState(0);
+    const [trackerDebug, setTrackerDebug] = useState({
+        handedness: [],
+        fingerCounts: [],
+        wristX: [],
+    });
 
     useEffect(() => { onAddRef.current = onAdd; }, [onAdd]);
 
@@ -224,26 +150,46 @@ export default function GestureChordPanel({ onAdd, disabled }) {
             results = lmr.detectForVideo(video, ts);
         } catch { return; }
 
-        drawSkeleton(ctx, results, vw, vh);
+        drawHandSkeleton(ctx, results, vw, vh);
 
-        const count = results.handLandmarks?.length ?? 0;
+        const landmarks = getHandLandmarks(results);
+        const handednesses = getHandedness(results);
+        const count = landmarks.length;
         if (count !== lastHandCountRef.current) {
             lastHandCountRef.current = count;
             setHandCount(count);
         }
+
+        const handednessDebug = handednesses.map((entry) => normalizeLabel(entry) ?? 'unknown');
+        const fingerDebug = landmarks.map((lm, index) => String(countFingers(lm, handednesses[index])));
+        const wristXDebug = landmarks.map((lm) => lm[0].x.toFixed(2));
+
+        setTrackerDebug((prev) => {
+            const sameHandedness = prev.handedness.join('|') === handednessDebug.join('|');
+            const sameFingerCounts = prev.fingerCounts.join('|') === fingerDebug.join('|');
+            const sameWristX = prev.wristX.join('|') === wristXDebug.join('|');
+            if (sameHandedness && sameFingerCounts && sameWristX) return prev;
+            return {
+                handedness: handednessDebug,
+                fingerCounts: fingerDebug,
+                wristX: wristXDebug,
+            };
+        });
 
         const { quality, root } = detectGesture(results);
 
         // Log every ~90 frames so you can verify what's being detected in DevTools
         frameCountRef.current++;
         if (frameCountRef.current % 90 === 0) {
-            console.log('[GestureChords]', {
+            const debugSnapshot = {
                 hands: count,
-                wristX: results.handLandmarks?.map(lm => lm[0].x.toFixed(2)),
-                fingers: results.handLandmarks?.map(lm => countFingers(lm)),
+                handedness: handednessDebug,
+                wristX: wristXDebug,
+                fingers: fingerDebug,
                 quality,
                 root,
-            });
+            };
+            console.log(`[GestureChords] ${JSON.stringify(debugSnapshot)}`);
         }
 
         // Throttle React state updates to when gesture actually changes
@@ -262,7 +208,9 @@ export default function GestureChordPanel({ onAdd, disabled }) {
                 if (progressBarRef.current) progressBarRef.current.style.width = `${progress * 100}%`;
                 if (!h.added && elapsed >= HOLD_MS) {
                     h.added = true;
-                    onAddRef.current?.(new Block(new Chord(root, 4, quality)));
+                    const block = new Block(new Chord(root, 4, quality));
+                    onAddRef.current?.(block);
+                    onConfirmedChord?.(block);
                 }
             } else {
                 holdRef.current = { quality, root, since: now, added: false };
@@ -392,6 +340,12 @@ export default function GestureChordPanel({ onAdd, disabled }) {
                             <span className="text-[#34d399]">Right hand:</span>
                             {' '}1=C  2=D  3=E  4=F  5=G
                         </div>
+                    </div>
+
+                    <div className="mt-2 rounded border border-[#343434] bg-[#101010] px-2 py-1.5 font-mono text-[10px] text-[#8d8d8d]">
+                        <div>handedness: {trackerDebug.handedness.length ? trackerDebug.handedness.join(', ') : '—'}</div>
+                        <div>fingers: {trackerDebug.fingerCounts.length ? trackerDebug.fingerCounts.join(', ') : '—'}</div>
+                        <div>wrist x: {trackerDebug.wristX.length ? trackerDebug.wristX.join(', ') : '—'}</div>
                     </div>
                 </>
             )}

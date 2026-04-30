@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { drawHandSkeleton } from '../handSkeletonOverlay';
 
 /** Match installed @mediapipe/tasks-vision for WASM URL. */
 const MEDIAPIPE_TASKS_VERSION = '0.10.34';
@@ -78,8 +79,8 @@ export default function WebcamComponent() {
   const [isOn, setIsOn] = useState(false);
   const [error, setError] = useState(null);
   const [filterId, setFilterId] = useState('none');
-  /** 'none' = plain video; 'rapper' = canvas + tracked mask (not a real identity swap). */
-  const [faceMode, setFaceMode] = useState('none');
+  /** 'none' = plain video; 'rapper' = face mask; 'skeleton' = hand overlay. */
+  const [overlayMode, setOverlayMode] = useState('none');
   const [landmarkerLoading, setLandmarkerLoading] = useState(false);
   const [landmarkerError, setLandmarkerError] = useState(null);
 
@@ -134,7 +135,7 @@ export default function WebcamComponent() {
   }, []);
 
   useEffect(() => {
-    if (!isOn || faceMode !== 'rapper') {
+    if (!isOn || overlayMode === 'none') {
       if (landmarkerRef.current) {
         try {
           landmarkerRef.current.close();
@@ -158,19 +159,31 @@ export default function WebcamComponent() {
 
     (async () => {
       try {
-        const { FaceLandmarker, FilesetResolver } = await import('@mediapipe/tasks-vision');
+        const { FaceLandmarker, FilesetResolver, HandLandmarker } = await import('@mediapipe/tasks-vision');
         const wasm = await FilesetResolver.forVisionTasks(
           `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_TASKS_VERSION}/wasm`,
         );
-        const modelUrl =
-          'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+        const tryCreate = async (delegate) => {
+          if (overlayMode === 'rapper') {
+            const modelUrl =
+              'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+            return FaceLandmarker.createFromOptions(wasm, {
+              baseOptions: { modelAssetPath: modelUrl, delegate },
+              runningMode: 'VIDEO',
+              numFaces: 1,
+            });
+          }
 
-        const tryCreate = async (delegate) =>
-          FaceLandmarker.createFromOptions(wasm, {
-            baseOptions: { modelAssetPath: modelUrl, delegate },
+          return HandLandmarker.createFromOptions(wasm, {
+            baseOptions: {
+              modelAssetPath:
+                'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+              delegate,
+            },
             runningMode: 'VIDEO',
-            numFaces: 1,
+            numHands: 2,
           });
+        };
 
         let lm;
         try {
@@ -204,12 +217,12 @@ export default function WebcamComponent() {
         landmarkerRef.current = null;
       }
     };
-  }, [isOn, faceMode]);
+  }, [isOn, overlayMode]);
 
   const drawFrame = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas || !isOn || faceMode !== 'rapper') return;
+    if (!video || !canvas || !isOn || overlayMode === 'none') return;
 
     if (video.readyState < 2) return;
 
@@ -234,28 +247,37 @@ export default function WebcamComponent() {
 
     const lm = landmarkerRef.current;
     const img = maskImgRef.current;
-    if (lm && img?.complete && img.naturalWidth > 0) {
-      try {
-        let ts = performance.now();
-        if (ts <= lastVideoFrameTsRef.current) {
-          ts = lastVideoFrameTsRef.current + 0.001;
-        }
-        lastVideoFrameTsRef.current = ts;
+    if (!lm) return;
+
+    try {
+      let ts = performance.now();
+      if (ts <= lastVideoFrameTsRef.current) {
+        ts = lastVideoFrameTsRef.current + 0.001;
+      }
+      lastVideoFrameTsRef.current = ts;
+
+      if (overlayMode === 'skeleton') {
+        const results = lm.detectForVideo(video, ts);
+        drawHandSkeleton(ctx, results, vw, vh);
+        return;
+      }
+
+      if (img?.complete && img.naturalWidth > 0) {
         const results = lm.detectForVideo(video, ts);
         const landmarks = results.faceLandmarks?.[0];
         if (landmarks) {
           drawRapperMask(ctx, landmarks, vw, vh, img);
         }
-      } catch (e) {
-        if (import.meta.env.DEV) {
-          console.warn('[FaceLandmarker]', e);
-        }
+      }
+    } catch (e) {
+      if (import.meta.env.DEV) {
+        console.warn(overlayMode === 'skeleton' ? '[HandLandmarker]' : '[FaceLandmarker]', e);
       }
     }
-  }, [isOn, faceMode, filterId]);
+  }, [isOn, overlayMode, filterId]);
 
   useEffect(() => {
-    if (!isOn || faceMode !== 'rapper') {
+    if (!isOn || overlayMode === 'none') {
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = 0;
@@ -272,7 +294,7 @@ export default function WebcamComponent() {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = 0;
     };
-  }, [isOn, faceMode, drawFrame]);
+  }, [isOn, overlayMode, drawFrame]);
 
   useEffect(() => {
     return () => {
@@ -323,14 +345,15 @@ export default function WebcamComponent() {
       </label>
 
       <label className="mb-2 flex flex-col gap-1">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#b1b1b1]">Face</span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#b1b1b1]">Overlay</span>
         <select
           className="select select-sm h-8 min-h-8 w-full rounded border border-[#595959] bg-[#1f1f1f] text-xs text-[#e2e2e2] focus:outline-none focus:ring-2 focus:ring-[#7a7a7a]"
-          value={faceMode}
-          onChange={(e) => setFaceMode(e.target.value)}
+          value={overlayMode}
+          onChange={(e) => setOverlayMode(e.target.value)}
           aria-label="Face overlay mode"
         >
           <option value="none">Normal</option>
+          <option value="skeleton">Hand skeleton</option>
           <option value="rapper">Rapper mask (tracks face)</option>
         </select>
       </label>
@@ -341,7 +364,7 @@ export default function WebcamComponent() {
         <span className="h-[2px] flex-1 rounded bg-[#7a7a7a]" />
       </div>
 
-      {faceMode === 'rapper' && landmarkerError && (
+      {overlayMode !== 'none' && landmarkerError && (
         <div className="alert border-none bg-[#5b4317]/90 py-2 text-[#ffe6b8]">
           <span className="text-xs">{landmarkerError}</span>
         </div>
@@ -351,7 +374,7 @@ export default function WebcamComponent() {
           feed in the layout when drawing to canvas (opacity-0 + absolute). */}
       <div
         className={`relative w-full overflow-hidden rounded border border-[#4f4f4f] bg-[#121212] ${
-          faceMode === 'rapper' ? 'aspect-video min-h-[160px]' : ''
+          overlayMode !== 'none' ? 'aspect-video min-h-[160px]' : ''
         }`}
       >
         <video
@@ -360,12 +383,12 @@ export default function WebcamComponent() {
           playsInline
           muted
           className={
-            faceMode === 'rapper'
+            overlayMode !== 'none'
               ? 'absolute inset-0 z-0 h-full w-full object-cover opacity-0 pointer-events-none'
               : `block w-full rounded bg-[#141414] ${isOn ? '' : 'opacity-30'}`
           }
           style={
-            faceMode === 'none'
+            overlayMode === 'none'
               ? {
                   transform: 'scaleX(-1)',
                   filter: WEBCAM_FILTERS[filterId] ?? WEBCAM_FILTERS.none,
@@ -374,7 +397,7 @@ export default function WebcamComponent() {
           }
         />
 
-        {faceMode === 'rapper' && (
+        {overlayMode !== 'none' && (
           <>
             <canvas
               ref={canvasRef}
@@ -385,7 +408,7 @@ export default function WebcamComponent() {
             {isOn && landmarkerLoading && (
               <div className="absolute inset-0 z-20 flex items-center justify-center rounded bg-[#131313]/85 pointer-events-none">
                 <span className="rounded border border-[#5b5b5b] bg-[#242424] px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-[#d0d0d0]">
-                  Loading Face Tracking...
+                  {overlayMode === 'skeleton' ? 'Loading Hand Tracking...' : 'Loading Face Tracking...'}
                 </span>
               </div>
             )}
